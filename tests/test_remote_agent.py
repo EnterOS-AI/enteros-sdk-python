@@ -117,6 +117,36 @@ def test_register_saves_token_when_issued(client: RemoteAgentClient):
     assert kwargs["json"]["agent_card"] == {"name": "test-agent"}
 
 
+def test_register_sends_saas_routing_headers(tmp_token_dir: Path):
+    session = MagicMock()
+    c = RemoteAgentClient(
+        workspace_id="ws-saas",
+        platform_url="https://tenant.example.com",
+        org_id="org-uuid-123",
+        origin="https://tenant.example.com",
+        token_dir=tmp_token_dir,
+        session=session,
+    )
+    session.post.return_value = FakeResponse(200, {"status": "registered"})
+
+    c.register()
+
+    kwargs = session.post.call_args[1]
+    assert kwargs["headers"]["X-Molecule-Org-Id"] == "org-uuid-123"
+    assert kwargs["headers"]["Origin"] == "https://tenant.example.com"
+    assert "Authorization" not in kwargs["headers"]
+
+
+def test_register_includes_cached_token_when_present(client: RemoteAgentClient):
+    client.save_token("cached-token")
+    client._session.post.return_value = FakeResponse(200, {"status": "registered"})
+
+    client.register()
+
+    kwargs = client._session.post.call_args[1]
+    assert kwargs["headers"]["Authorization"] == "Bearer cached-token"
+
+
 def test_register_keeps_cached_token_when_platform_omits(client: RemoteAgentClient):
     # Simulate re-register of an already-tokened workspace: platform returns
     # no auth_token, SDK must keep using the cached one.
@@ -773,7 +803,7 @@ from molecule_agent.client import make_idempotency_key, strip_a2a_boundary
 
 
 def test_delegate_posts_task_and_idempotency_key(client: RemoteAgentClient):
-    """delegate() sends task + auto-generated idempotency_key to /delegate."""
+    """delegate() sends source in URL and target_id in the body."""
     client.save_token("tok")
     client._session.post.return_value = FakeResponse(200, {"status": "ok"})
 
@@ -781,8 +811,9 @@ def test_delegate_posts_task_and_idempotency_key(client: RemoteAgentClient):
 
     assert result["status"] == "ok"
     url = client._session.post.call_args[0][0]
-    assert url == "http://platform.test/workspaces/peer-ws/delegate"
+    assert url == "http://platform.test/workspaces/ws-abc-123/delegate"
     body = client._session.post.call_args[1]["json"]
+    assert body["target_id"] == "peer-ws"
     assert body["task"] == "index the docs"
     assert body["idempotency_key"] is not None
     assert len(body["idempotency_key"]) == 64  # SHA-256 hex
