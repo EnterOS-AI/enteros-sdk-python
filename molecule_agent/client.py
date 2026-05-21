@@ -498,6 +498,7 @@ class RemoteAgentClient:
         reported = self.reported_url or "remote://no-inbound"
         resp = self._session.post(
             f"{self.platform_url}/registry/register",
+            headers=self._auth_headers(),
             json={
                 "id": self.workspace_id,
                 "url": reported,
@@ -1061,13 +1062,14 @@ class RemoteAgentClient:
         """
         key = idempotency_key if idempotency_key else make_idempotency_key(task)
         resp = self._session.post(
-            f"{self.platform_url}/workspaces/{target_id}/delegate",
+            f"{self.platform_url}/workspaces/{self.workspace_id}/delegate",
             headers={
                 **self._auth_headers(),
                 "X-Workspace-ID": self.workspace_id,
                 "Content-Type": "application/json",
             },
             json={
+                "target_id": target_id,
                 "task": task,
                 "idempotency_key": key,
             },
@@ -1305,4 +1307,3 @@ __all__ = [
     "verify_plugin_sha256",
     "make_idempotency_key",
 ]
-
