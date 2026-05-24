@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molecule-ai-sdk"
-version = "0.2.0"
+version = "0.2.1"
 description = "Molecule AI SDK — build plugins (molecule_plugin) AND remote agents that join a Molecule AI org from another machine (molecule_agent)."
 readme = "README.md"
 requires-python = ">=3.11"

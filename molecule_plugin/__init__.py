@@ -14,7 +14,7 @@ This SDK exposes:
   vast majority of cases).
 * :data:`PLUGIN_YAML_SCHEMA` — the manifest schema for validation tooling.
 
-Example: a minimal plugin that's installable on Claude Code and DeepAgents
+Example: a minimal plugin that's installable on Claude Code and Codex
 
 .. code-block:: text
 
@@ -24,7 +24,7 @@ Example: a minimal plugin that's installable on Claude Code and DeepAgents
     ├── skills/my-skill/SKILL.md
     └── adapters/
         ├── claude_code.py   # `from molecule_plugin import AgentskillsAdaptor as Adaptor`
-        └── deepagents.py    # same one-liner
+        └── codex.py         # same one-liner
 
 Full docs + cookiecutter template: see ``sdk/python/README.md``.
 """
@@ -68,7 +68,7 @@ from .channel import (  # noqa: F401
     validate_channel_file,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "AgentskillsAdaptor",

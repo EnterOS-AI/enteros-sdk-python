@@ -3,7 +3,7 @@
 One class per agent shape. Currently ships :class:`AgentskillsAdaptor`
 (the `agentskills.io <https://agentskills.io>`_-format default); more
 will be added as new shapes emerge in the ecosystem
-(``MCPServerAdaptor``, ``DeepAgentsSubagentAdaptor``, ``RAGPipelineAdaptor``,
+(``MCPServerAdaptor``, ``RuntimeSubagentAdaptor``, ``RAGPipelineAdaptor``,
 etc.).
 
 SDK authors pick a sub-type by import:

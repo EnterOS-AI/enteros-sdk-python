@@ -38,7 +38,7 @@ PLUGIN_YAML_SCHEMA: dict[str, Any] = {
         "runtimes": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Declared supported runtimes (e.g. claude_code, deepagents).",
+            "description": "Declared supported runtimes (e.g. claude_code, codex).",
         },
         "sha256": {
             "type": "string",
@@ -81,7 +81,7 @@ def validate_manifest(path: str | Path) -> list[str]:
             errors.append(f"`{field_name}` must be a list")
 
     if "runtimes" in raw and isinstance(raw["runtimes"], list):
-        known = {"claude_code", "deepagents", "langgraph", "crewai", "autogen", "openclaw"}
+        known = {"claude_code", "codex", "hermes", "openclaw"}
         for r in raw["runtimes"]:
             if not isinstance(r, str):
                 errors.append(f"`runtimes` entry must be string, got {type(r).__name__}")

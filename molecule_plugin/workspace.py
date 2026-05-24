@@ -18,17 +18,14 @@ from pathlib import Path
 import yaml
 
 
-# Runtimes the platform knows how to provision. Stays aligned with
-# provisioner.RuntimeImages in platform/internal/provisioner/provisioner.go.
+# Runtimes the platform currently provisions for managed workspaces.
 SUPPORTED_RUNTIMES = frozenset(
     {
-        "langgraph",
         "claude-code",
         "claude_code",  # adapter dirs use underscores
+        "codex",
+        "hermes",
         "openclaw",
-        "deepagents",
-        "crewai",
-        "autogen",
     }
 )
 
@@ -114,4 +111,3 @@ def validate_workspace_template(path: Path) -> list[ValidationError]:
 
 # Re-exported for type hints in __init__.py
 __all__ = ["ValidationError", "SUPPORTED_RUNTIMES", "validate_workspace_template"]
-

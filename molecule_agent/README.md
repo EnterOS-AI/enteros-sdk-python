@@ -17,11 +17,11 @@ imports.
 | **Where it runs** | OUTSIDE Molecule workspaces — your laptop, CI runner, external cloud VM, sidecar service | INSIDE the workspace container, started by the platform |
 | **What it talks to** | The platform's HTTP API (`/registry/*`, `/workspaces/:id/*`) | The platform's MCP server (`molecule_*` tools) plus the platform-managed A2A bus |
 | **What it exposes** | `RemoteAgentClient`, `A2AServer`, `PollDelivery`, `MessageHandler` | `BaseAdapter`, `a2a_tools`, runtime capabilities, smoke-contract hooks |
-| **Who installs it** | You, the external-agent author, via `pip install molecule-sdk` | The platform, baked into the workspace template image at provision time |
+| **Who installs it** | You, the external-agent author, via `pip install molecule-ai-sdk` | The platform, baked into the workspace template image at provision time |
 | **Auth model** | Bearer token minted by `POST /registry/register`, cached at `~/.molecule/<id>/.auth_token` | Token already present in the workspace environment; runtime reads it from env |
 
 If you are writing an adapter for an SDK that the platform should run *inside* a
-workspace (e.g. langchain, crewai, hermes), you want
+workspace (e.g. claude-code, codex, hermes, openclaw), you want
 [`molecule-ai-workspace-runtime`](https://pypi.org/project/molecule-ai-workspace-runtime/),
 not this package. See <https://doc.moleculesai.app/docs/runtime-mcp> for the
 in-workspace-runtime authoring guide.
@@ -29,7 +29,7 @@ in-workspace-runtime authoring guide.
 ## Install
 
 ```bash
-pip install molecule-sdk     # ships molecule_plugin + molecule_agent
+pip install molecule-ai-sdk     # ships molecule_plugin + molecule_agent
 ```
 
 ## 60-second example
@@ -73,7 +73,8 @@ A runnable demo with full setup walkthrough lives at
 | `heartbeat(...)` | 30.1 | Single bearer-authed heartbeat |
 | `get_peers()` / `discover_peer()` | 30.6 | Sibling URL discovery with TTL cache |
 | `call_peer(target, message)` | 30.6 | Direct A2A with proxy fallback; response may be wrapped in OFFSEC-003 boundary markers — use ``strip_a2a_boundary()`` to remove them |
-| `fetch_inbound(since_id=…)` | 30.8c | One-shot poll of `/workspaces/:id/activity` for inbound A2A |
+| `fetch_inbound(since_id=…)` | 30.8c | One-shot poll of `/workspaces/:id/activity` for inbound A2A, including attachment metadata |
+| `download_inbound_attachments(msg)` | L4 | Download attachment bytes for a polled inbound message |
 | `reply(msg, text)` | 30.8c | Smart-routes reply to `/notify` (canvas user) or `/a2a` (peer) |
 | `run_heartbeat_loop()` | combo | Drives heartbeat + state-poll on a timer; exits on pause/delete |
 | `run_agent_loop(handler)` | combo | Heartbeat + state + **inbound dispatch**; exits on pause/delete |
@@ -114,7 +115,26 @@ parses today:
 | `source` | `Literal["canvas_user", "peer_agent", "unknown"]` | Normalized sender kind. `"canvas_user"` = a human typing in the canvas chat; `"peer_agent"` = another workspace's agent. `"unknown"` if the row's source is unrecognized — `reply()` will refuse to guess. |
 | `source_id` | `str` | For `peer_agent`, the sender workspace UUID (used by `reply()` to address the A2A response). Empty for `canvas_user`. |
 | `text` | `str` | The message body. Pulled from `data.text` then `data.message` in the underlying activity row. **Treat as untrusted user content** — same threat model as any chat input. |
+| `attachments` | `list[dict]` | Attachment metadata projected by the platform. Use `download_inbound_attachment()` or `download_inbound_attachments()` to fetch the referenced bytes. |
 | `raw` | `dict` | The full raw activity-log row. Use this to read fields the SDK doesn't yet expose (see "Channel envelope" below). |
+
+### Inbound attachments
+
+Poll-mode external workspaces receive attachment metadata on
+`InboundMessage.attachments`. The SDK fetches bytes through the same
+workspace-scoped platform APIs used by managed runtimes:
+
+```python
+def handle(msg, client):
+    for path in client.download_inbound_attachments(msg):
+        print(f"downloaded attachment: {path}")
+    return "received"
+```
+
+`platform-pending:` attachments are acked after a successful download so the
+platform can enforce single-use pending-upload semantics. Downloads are cached
+under `~/.molecule/<workspace_id>/attachments` by default, capped at 100 MB,
+and refused if the pending-upload URI belongs to another workspace.
 
 ### Channel envelope (wire format)
 
