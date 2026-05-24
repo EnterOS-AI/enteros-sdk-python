@@ -30,6 +30,15 @@ errors = validate_manifest("my-plugin/plugin.yaml")
 assert not errors, errors
 ```
 
+Install the current internal SDK release from Molecule's Gitea PyPI registry,
+leaving PyPI as the dependency fallback:
+
+```bash
+pip install \
+  --extra-index-url "https://<user>:<token>@git.moleculesai.app/api/packages/molecule-ai/pypi/simple" \
+  molecule-ai-sdk==0.2.1
+```
+
 ## CLI
 
 The SDK ships a CLI for validating Molecule AI artifacts before publishing:

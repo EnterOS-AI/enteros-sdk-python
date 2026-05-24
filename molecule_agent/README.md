@@ -32,6 +32,15 @@ in-workspace-runtime authoring guide.
 pip install molecule-ai-sdk     # ships molecule_plugin + molecule_agent
 ```
 
+For the current internal release, install from Molecule's Gitea PyPI registry
+with PyPI left as the dependency fallback:
+
+```bash
+pip install \
+  --extra-index-url "https://<user>:<token>@git.moleculesai.app/api/packages/molecule-ai/pypi/simple" \
+  molecule-ai-sdk==0.2.1
+```
+
 ## 60-second example
 
 ```python
