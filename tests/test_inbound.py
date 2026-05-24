@@ -17,6 +17,7 @@ Mocking style matches ``tests/test_remote_agent.py``: a ``FakeResponse`` /
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -41,10 +42,19 @@ from molecule_agent.inbound import _parse_activity_row
 
 
 class FakeResponse:
-    def __init__(self, status_code: int = 200, json_body: Any = None, text: str = ""):
+    def __init__(
+        self,
+        status_code: int = 200,
+        json_body: Any = None,
+        text: str = "",
+        content: bytes = b"",
+        chunks: list[bytes] | None = None,
+    ):
         self.status_code = status_code
         self._json = json_body
         self.text = text
+        self.content = content
+        self._chunks = chunks
         self.headers: dict[str, str] = {}
 
     def json(self) -> Any:
@@ -53,6 +63,13 @@ class FakeResponse:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise requests.HTTPError(f"HTTP {self.status_code}")
+
+    def iter_content(self, chunk_size: int = 1):
+        if self._chunks is not None:
+            yield from self._chunks
+            return
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i:i + chunk_size]
 
 
 @pytest.fixture
@@ -230,6 +247,33 @@ def test_parse_activity_row_enrichment_in_canvas_user_row():
     assert msg.agent_card_url == "https://platform.example/registry/discover/user-uuid"
 
 
+def test_parse_activity_row_preserves_projected_attachments():
+    row = {
+        "id": "act-8",
+        "data": {"source": "canvas_user", "text": "see image"},
+        "attachments": [
+            {
+                "kind": "image",
+                "uri": "platform-pending:ws-abc-123/11111111-1111-1111-1111-111111111111",
+                "name": "shape.png",
+                "mimeType": "image/png",
+            },
+            {"name": "broken.png"},
+            "not a dict",
+        ],
+    }
+    msg = _parse_activity_row(row)
+    assert msg is not None
+    assert msg.attachments == [
+        {
+            "kind": "image",
+            "uri": "platform-pending:ws-abc-123/11111111-1111-1111-1111-111111111111",
+            "name": "shape.png",
+            "mimeType": "image/png",
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # fetch_inbound
 # ---------------------------------------------------------------------------
@@ -252,6 +296,7 @@ def test_fetch_inbound_happy_path(client: RemoteAgentClient):
     assert call_args.args[0] == "http://platform.test/workspaces/ws-abc-123/activity"
     assert call_args.kwargs["params"]["type"] == "a2a_receive"
     assert call_args.kwargs["params"]["limit"] == "100"
+    assert call_args.kwargs["params"]["include"] == "peer_info"
     assert "since_id" not in call_args.kwargs["params"]
 
 
@@ -380,6 +425,188 @@ def test_fetch_inbound_combined_filters():
     params = session.get.call_args.kwargs["params"]
     assert params["peer_id"] == "peer-x"
     assert params["before_ts"] == "2026-05-09T12:00:00Z"
+
+
+def test_fetch_inbound_parses_attachments_from_include_peer_info(client: RemoteAgentClient):
+    rows = [
+        {
+            "id": "act-with-file",
+            "data": {"source": "canvas_user", "text": "describe this"},
+            "attachments": [
+                {
+                    "kind": "image",
+                    "uri": "platform-pending:ws-abc-123/22222222-2222-2222-2222-222222222222",
+                    "name": "shape.png",
+                    "mimeType": "image/png",
+                }
+            ],
+        }
+    ]
+    client._session.get.return_value = FakeResponse(200, rows)
+
+    out = client.fetch_inbound()
+
+    assert out[0].attachments[0]["name"] == "shape.png"
+    assert client._session.get.call_args.kwargs["params"]["include"] == "peer_info"
+
+
+def test_download_inbound_attachment_fetches_pending_upload_and_acks(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "platform-pending:ws-abc-123/33333333-3333-3333-3333-333333333333",
+        "name": "shape.png",
+    }
+    client._session.get.return_value = FakeResponse(200, content=b"png-bytes")
+    client._session.post.return_value = FakeResponse(204)
+
+    path = client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert path.read_bytes() == b"png-bytes"
+    get_call = client._session.get.call_args
+    assert get_call.args[0] == (
+        "http://platform.test/workspaces/ws-abc-123/pending-uploads/"
+        "33333333-3333-3333-3333-333333333333/content"
+    )
+    assert get_call.kwargs["stream"] is True
+    assert get_call.kwargs["headers"]["Authorization"] == "Bearer test-token-secret"
+    post_call = client._session.post.call_args
+    assert post_call.args[0].endswith(
+        "/workspaces/ws-abc-123/pending-uploads/"
+        "33333333-3333-3333-3333-333333333333/ack"
+    )
+
+
+def test_download_inbound_attachment_rejects_cross_workspace_pending_uri(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "platform-pending:other-ws/33333333-3333-3333-3333-333333333333",
+        "name": "shape.png",
+    }
+
+    with pytest.raises(ValueError, match="another workspace"):
+        client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    client._session.get.assert_not_called()
+
+
+def test_download_inbound_attachment_fetches_workspace_uri(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "workspace:/workspace/.molecule/chat-uploads/report.txt",
+        "name": "../report.txt",
+    }
+    client._session.get.return_value = FakeResponse(200, content=b"hello")
+
+    path = client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert path.name == "_report.txt"
+    assert path.read_bytes() == b"hello"
+    get_call = client._session.get.call_args
+    assert get_call.args[0] == "http://platform.test/workspaces/ws-abc-123/chat/download"
+    assert get_call.kwargs["params"] == {
+        "path": "/workspace/.molecule/chat-uploads/report.txt"
+    }
+
+
+def test_download_inbound_attachment_cached_pending_still_acks(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "platform-pending:ws-abc-123/44444444-4444-4444-4444-444444444444",
+        "name": "shape.png",
+    }
+    digest = "platform-pending:ws-abc-123/44444444-4444-4444-4444-444444444444"
+    cache_path = tmp_path / hashlib.sha256(digest.encode("utf-8")).hexdigest()[:24] / "shape.png"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_bytes(b"cached")
+    client._session.post.return_value = FakeResponse(204)
+
+    path = client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert path == cache_path
+    client._session.get.assert_not_called()
+    assert client._session.post.call_args.args[0].endswith(
+        "/workspaces/ws-abc-123/pending-uploads/"
+        "44444444-4444-4444-4444-444444444444/ack"
+    )
+    assert path.with_name(f"{path.name}.acked").exists()
+
+
+def test_download_inbound_attachment_cached_pending_skips_ack_when_marked(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "platform-pending:ws-abc-123/55555555-5555-5555-5555-555555555555",
+        "name": "shape.png",
+    }
+    digest = "platform-pending:ws-abc-123/55555555-5555-5555-5555-555555555555"
+    cache_path = tmp_path / hashlib.sha256(digest.encode("utf-8")).hexdigest()[:24] / "shape.png"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_bytes(b"cached")
+    cache_path.with_name("shape.png.acked").write_text("")
+
+    path = client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert path == cache_path
+    client._session.get.assert_not_called()
+    client._session.post.assert_not_called()
+
+
+def test_download_inbound_attachment_cached_pending_treats_404_ack_as_gone(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "platform-pending:ws-abc-123/66666666-6666-6666-6666-666666666666",
+        "name": "shape.png",
+    }
+    digest = "platform-pending:ws-abc-123/66666666-6666-6666-6666-666666666666"
+    cache_path = tmp_path / hashlib.sha256(digest.encode("utf-8")).hexdigest()[:24] / "shape.png"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_bytes(b"cached")
+    client._session.post.return_value = FakeResponse(404)
+
+    path = client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert path == cache_path
+    assert path.with_name(f"{path.name}.acked").exists()
+
+
+def test_download_inbound_attachment_rejects_large_content_length(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "workspace:/workspace/.molecule/chat-uploads/huge.bin",
+        "name": "huge.bin",
+    }
+    response = FakeResponse(200, content=b"")
+    response.headers["Content-Length"] = str(100 * 1024 * 1024 + 1)
+    client._session.get.return_value = response
+
+    with pytest.raises(ValueError, match="cap"):
+        client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert not list(tmp_path.rglob("huge.bin"))
+
+
+def test_download_inbound_attachment_rejects_large_stream(
+    client: RemoteAgentClient, tmp_path: Path
+):
+    attachment = {
+        "uri": "workspace:/workspace/.molecule/chat-uploads/huge.bin",
+        "name": "huge.bin",
+    }
+    client._session.get.return_value = FakeResponse(
+        200,
+        chunks=[b"x" * (100 * 1024 * 1024), b"x"],
+    )
+
+    with pytest.raises(ValueError, match="exceeds cap"):
+        client.download_inbound_attachment(attachment, dest_dir=tmp_path)
+
+    assert not list(tmp_path.rglob("huge.bin"))
 
 
 # ---------------------------------------------------------------------------

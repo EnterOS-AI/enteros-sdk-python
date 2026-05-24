@@ -79,6 +79,7 @@ class InboundMessage:
     source: InboundSource
     source_id: str
     text: str
+    attachments: list[dict[str, Any]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
     # Enrichment fields — populated from row["data"]["peer_name"],
     # row["data"]["peer_role"], row["data"]["agent_card_url"].
@@ -139,17 +140,43 @@ def _parse_activity_row(row: dict[str, Any]) -> InboundMessage | None:
         source = "unknown"
 
     text = str(data.get("text") or data.get("message") or "")
+    attachments = _extract_attachments(row, data)
 
     return InboundMessage(
         activity_id=aid,
         source=source,
         source_id=source_id,
         text=text,
+        attachments=attachments,
         raw=row,
         peer_name=str(data.get("peer_name") or ""),
         peer_role=str(data.get("peer_role") or ""),
         agent_card_url=str(data.get("agent_card_url") or ""),
     )
+
+
+def _extract_attachments(row: dict[str, Any], data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the flat ``attachments[]`` projected by platform activity APIs.
+
+    Newer workspace-server builds put attachment metadata at the activity-row
+    top level when callers request ``include=peer_info``. Some
+    older or hand-built rows put it under ``data.attachments``. Preserve only
+    dict entries with a URI; byte fetching remains an explicit client action.
+    """
+    raw = row.get("attachments")
+    if not isinstance(raw, list):
+        raw = data.get("attachments")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        uri = item.get("uri")
+        if not isinstance(uri, str) or not uri:
+            continue
+        out.append(dict(item))
+    return out
 
 
 # ---------------------------------------------------------------------------

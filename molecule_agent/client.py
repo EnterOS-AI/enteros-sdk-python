@@ -33,6 +33,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 import requests
 
@@ -65,6 +66,9 @@ _RETRY_JITTER_FRAC = 0.25            # ±25% jitter around base delay
 # that concurrent restarts within the same 60-second window produce the
 # same key, while distinct tasks or distinct minutes produce distinct keys.
 _IDEMPOTENCY_ROUND_SECONDS = 60
+MAX_INBOUND_ATTACHMENT_BYTES = 100 * 1024 * 1024
+INBOUND_ATTACHMENT_DOWNLOAD_TIMEOUT = 60.0
+_UNSAFE_ATTACHMENT_NAME_CHARS = set('/\\\0')
 
 
 def make_idempotency_key(task_text: str) -> str:
@@ -163,6 +167,59 @@ def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
                 f"refusing tar entry escaping dest: {member.name!r} -> {target}"
             ) from exc
         tf.extract(member, dest)
+
+
+def _safe_attachment_name(name: str) -> str:
+    cleaned = "".join("_" if ch in _UNSAFE_ATTACHMENT_NAME_CHARS else ch for ch in name)
+    cleaned = cleaned.strip().strip(".") or "attachment"
+    return cleaned[:100]
+
+
+def _parse_platform_pending_uri(uri: str) -> tuple[str, str]:
+    rest = uri[len("platform-pending:"):]
+    parts = rest.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise ValueError(f"invalid platform-pending attachment uri: {uri!r}")
+    workspace_id, file_id = parts[0], parts[1]
+    try:
+        file_id = str(uuid.UUID(file_id))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid pending upload file id in uri: {uri!r}") from exc
+    return workspace_id, file_id
+
+
+def _resolve_workspace_attachment_path(uri: str) -> str | None:
+    if uri.startswith("workspace:"):
+        path = uri[len("workspace:"):]
+    elif uri.startswith("file://"):
+        path = uri[len("file://"):]
+    elif uri.startswith("/"):
+        path = uri
+    else:
+        return None
+    try:
+        resolved = Path(path).resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
+    workspace_root = Path("/workspace")
+    if resolved != workspace_root and workspace_root not in resolved.parents:
+        return None
+    return str(resolved)
+
+
+def _content_length(resp: requests.Response) -> int | None:
+    raw = resp.headers.get("Content-Length") if resp.headers else None
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
+def _ack_marker_path(cache_path: Path) -> Path:
+    return cache_path.with_name(f"{cache_path.name}.acked")
 
 
 def _rmtree_quiet(path: Path) -> None:
@@ -796,7 +853,11 @@ class RemoteAgentClient:
         # inbound module references RemoteAgentClient via TYPE_CHECKING.
         from .inbound import CursorLostError, _parse_activity_row
 
-        params: dict[str, str] = {"type": type, "limit": str(int(limit))}
+        params: dict[str, str] = {
+            "type": type,
+            "limit": str(int(limit)),
+            "include": "peer_info",
+        }
         if since_id:
             params["since_id"] = since_id
         if peer_id:
@@ -840,6 +901,138 @@ class RemoteAgentClient:
             if msg is not None:
                 out.append(msg)
         return out
+
+    # ------------------------------------------------------------------
+    # Inbound attachments (poll-mode external workspaces)
+    # ------------------------------------------------------------------
+
+    def download_inbound_attachment(
+        self,
+        attachment: dict[str, Any],
+        dest_dir: Path | None = None,
+        *,
+        ack: bool = True,
+    ) -> Path:
+        """Download one inbound attachment and return the local file path.
+
+        Poll-mode external agents receive attachment metadata by reference in
+        :attr:`InboundMessage.attachments`. This method fetches the bytes using
+        the workspace bearer token:
+
+        * ``platform-pending:<workspace>/<file_id>`` → pending-upload content,
+          then optional ack.
+        * ``workspace:/workspace/...`` / ``file:///workspace/...`` /
+          ``/workspace/...`` → the platform's chat download endpoint.
+
+        The download is capped at 100 MB and cached by URI under
+        ``<token_dir>/attachments`` by default.
+        """
+        uri = str(attachment.get("uri") or "")
+        if not uri:
+            raise ValueError("attachment is missing uri")
+        name = _safe_attachment_name(str(attachment.get("name") or "attachment"))
+        cache_dir = dest_dir or (self._token_dir / "attachments")
+        url: str
+        params: dict[str, str] | None = None
+        ack_url: str | None = None
+        if uri.startswith("platform-pending:"):
+            workspace_id, file_id = _parse_platform_pending_uri(uri)
+            if workspace_id != self.workspace_id:
+                raise ValueError(
+                    "refusing to fetch attachment for another workspace "
+                    f"({workspace_id!r} != {self.workspace_id!r})"
+                )
+            quoted_ws = quote(workspace_id, safe="")
+            quoted_file = quote(file_id, safe="")
+            url = f"{self.platform_url}/workspaces/{quoted_ws}/pending-uploads/{quoted_file}/content"
+            ack_url = f"{self.platform_url}/workspaces/{quoted_ws}/pending-uploads/{quoted_file}/ack"
+        else:
+            path = _resolve_workspace_attachment_path(uri)
+            if not path:
+                raise ValueError(f"unsupported attachment uri: {uri!r}")
+            quoted_ws = quote(self.workspace_id, safe="")
+            url = f"{self.platform_url}/workspaces/{quoted_ws}/chat/download"
+            params = {"path": path}
+
+        cache_path = cache_dir / hashlib.sha256(uri.encode("utf-8")).hexdigest()[:24] / name
+        if cache_path.exists() and cache_path.is_file():
+            ack_marker = _ack_marker_path(cache_path)
+            if ack and ack_url and not ack_marker.exists():
+                ack_resp = self._session.post(
+                    ack_url,
+                    headers=self._auth_headers(),
+                    timeout=INBOUND_ATTACHMENT_DOWNLOAD_TIMEOUT,
+                )
+                if ack_resp.status_code == 404:
+                    logger.info(
+                        "pending attachment %s already unavailable on ack; using cached file",
+                        uri,
+                    )
+                else:
+                    ack_resp.raise_for_status()
+                ack_marker.touch()
+            return cache_path
+
+        resp = self._session.get(
+            url,
+            headers=self._auth_headers(),
+            params=params,
+            timeout=INBOUND_ATTACHMENT_DOWNLOAD_TIMEOUT,
+            stream=True,
+        )
+        resp.raise_for_status()
+        content_length = _content_length(resp)
+        if content_length is not None and content_length > MAX_INBOUND_ATTACHMENT_BYTES:
+            raise ValueError(
+                f"attachment {name!r} is {content_length} bytes; cap is "
+                f"{MAX_INBOUND_ATTACHMENT_BYTES}"
+            )
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = cache_path.with_name(f"{cache_path.name}.tmp-{os.getpid()}")
+        size = 0
+        try:
+            with tmp_path.open("wb") as fh:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > MAX_INBOUND_ATTACHMENT_BYTES:
+                        raise ValueError(
+                            f"attachment {name!r} exceeds cap "
+                            f"{MAX_INBOUND_ATTACHMENT_BYTES}"
+                        )
+                    fh.write(chunk)
+            tmp_path.replace(cache_path)
+        except Exception:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+
+        if ack and ack_url:
+            ack_resp = self._session.post(
+                ack_url,
+                headers=self._auth_headers(),
+                timeout=INBOUND_ATTACHMENT_DOWNLOAD_TIMEOUT,
+            )
+            ack_resp.raise_for_status()
+            _ack_marker_path(cache_path).touch()
+        return cache_path
+
+    def download_inbound_attachments(
+        self,
+        message: "InboundMessage",
+        dest_dir: Path | None = None,
+        *,
+        ack: bool = True,
+    ) -> list[Path]:
+        """Download every attachment on an inbound poll message."""
+        return [
+            self.download_inbound_attachment(att, dest_dir=dest_dir, ack=ack)
+            for att in message.attachments
+        ]
 
     def reply(self, message: "InboundMessage", text: str) -> None:
         """Reply to an inbound message.
