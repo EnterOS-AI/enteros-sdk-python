@@ -30,7 +30,7 @@ class InstallContext:
     """Workspace UUID — useful for per-workspace state or logging."""
 
     runtime: str
-    """Runtime identifier (``claude_code``, ``deepagents``, …)."""
+    """Runtime identifier (``claude_code``, ``codex``, ``hermes``, etc.)."""
 
     plugin_root: Path
     """Path to the plugin's directory (where plugin.yaml + content lives)."""
@@ -50,7 +50,7 @@ class InstallContext:
     register_subagent: Callable[[str, dict[str, Any]], None] = field(
         default=lambda name, spec: None
     )
-    """Register a sub-agent specification (DeepAgents-only). No-op elsewhere."""
+    """Register a sub-agent specification. No-op for runtimes without this hook."""
 
     append_to_memory: Callable[[str, str], None] = field(
         default=lambda filename, content: None

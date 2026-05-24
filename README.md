@@ -6,7 +6,9 @@ on any Molecule AI workspace whose runtime the plugin supports.
 
 ## Quick start
 
-Copy `template/` to a new directory and edit:
+Copy the repo's `template/` directory to a new directory and edit it. If you
+installed from PyPI, fetch the template from
+`https://git.moleculesai.app/molecule-ai/molecule-sdk-python/src/branch/main/template`.
 
 ```
 my-plugin/
@@ -17,7 +19,7 @@ my-plugin/
 │   └── tools/do_thing.py    # optional LangChain @tool functions
 └── adapters/
     ├── claude_code.py       # one-liner: `from molecule_plugin import AgentskillsAdaptor as Adaptor`
-    └── deepagents.py        # same
+    └── codex.py             # same
 ```
 
 Validate:
@@ -64,13 +66,13 @@ That covers most plugins.
 Write a custom adaptor when you need to:
 
 - **Register runtime tools dynamically** — call `ctx.register_tool(name, fn)`.
-- **Register DeepAgents sub-agents** — call `ctx.register_subagent(name, spec)`.
+- **Register runtime sub-agents** — call `ctx.register_subagent(name, spec)`.
 - **Write to a non-standard memory file** — call `ctx.append_to_memory(filename, content)`.
 
 Minimum custom adaptor:
 
 ```python
-# adapters/deepagents.py
+# adapters/codex.py
 from molecule_plugin import InstallContext, InstallResult
 
 class Adaptor:
@@ -127,8 +129,8 @@ bundled into the platform by dropping them into `plugins/` at deploy time.
 
 ## Supported runtimes
 
-As of 2026-Q2: `claude_code`, `deepagents`, `langgraph`, `crewai`, `autogen`,
-`openclaw`. See the live list with:
+As of 2026-Q2: `claude_code`, `codex`, `hermes`, and `openclaw`. See the live
+list with:
 
 ```bash
 curl $PLATFORM_URL/plugins

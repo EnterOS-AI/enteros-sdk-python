@@ -3,19 +3,25 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tomllib
 
 import pytest
 import yaml
 
+import molecule_agent
+import molecule_plugin
 from molecule_plugin import (
     SUPPORTED_CHANNEL_TYPES,
     SUPPORTED_RUNTIMES,
     validate_channel_config,
     validate_channel_file,
+    validate_manifest,
     validate_org_template,
     validate_workspace_template,
 )
 from molecule_plugin.__main__ import main as cli_main
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------- workspace ----------
@@ -67,14 +73,14 @@ def test_workspace_validation_errors(tmp_path: Path):
 def test_workspace_runtime_config_not_dict(tmp_path: Path):
     _write_yaml(
         tmp_path / "config.yaml",
-        {"name": "x", "runtime": "langgraph", "runtime_config": "nope"},
+        {"name": "x", "runtime": "codex", "runtime_config": "nope"},
     )
     msgs = [e.message for e in validate_workspace_template(tmp_path)]
     assert any("runtime_config must be an object" in m for m in msgs)
 
 
 def test_workspace_runtime_config_none_ok(tmp_path: Path):
-    _write_yaml(tmp_path / "config.yaml", {"name": "x", "runtime": "langgraph", "runtime_config": None})
+    _write_yaml(tmp_path / "config.yaml", {"name": "x", "runtime": "hermes", "runtime_config": None})
     assert validate_workspace_template(tmp_path) == []
 
 
@@ -85,7 +91,22 @@ def test_org_defaults_none_ok(tmp_path: Path):
 
 def test_supported_runtimes_contains_known():
     assert "claude-code" in SUPPORTED_RUNTIMES
-    assert "deepagents" in SUPPORTED_RUNTIMES
+    assert "codex" in SUPPORTED_RUNTIMES
+    assert "hermes" in SUPPORTED_RUNTIMES
+    assert "openclaw" in SUPPORTED_RUNTIMES
+    assert "autogen" not in SUPPORTED_RUNTIMES
+    assert "langgraph" not in SUPPORTED_RUNTIMES
+
+
+def test_package_versions_match_pyproject():
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    expected = pyproject["project"]["version"]
+    assert molecule_agent.__version__ == expected
+    assert molecule_plugin.__version__ == expected
+
+
+def test_template_manifest_uses_supported_runtimes():
+    assert validate_manifest(REPO_ROOT / "template/plugin.yaml") == []
 
 
 # ---------- org ----------
@@ -112,6 +133,34 @@ def test_org_happy(tmp_path: Path):
         },
     )
     assert validate_org_template(tmp_path) == []
+
+
+def test_org_external_runtime_allowed_only_for_external_workspace(tmp_path: Path):
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "workspaces": [
+                {
+                    "name": "Remote",
+                    "runtime": "external",
+                    "external": True,
+                    "url": "https://agent.example.com",
+                }
+            ],
+        },
+    )
+    assert validate_org_template(tmp_path) == []
+
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "workspaces": [{"name": "Bad", "runtime": "external"}],
+        },
+    )
+    msgs = [e.message for e in validate_org_template(tmp_path)]
+    assert any("external=true" in m for m in msgs)
 
 
 def test_org_missing_file(tmp_path: Path):
@@ -277,7 +326,7 @@ def test_channel_types_exports():
 # ---------- CLI ----------
 
 def test_cli_workspace_valid(tmp_path, capsys):
-    _write_yaml(tmp_path / "config.yaml", {"name": "x", "runtime": "langgraph"})
+    _write_yaml(tmp_path / "config.yaml", {"name": "x", "runtime": "openclaw"})
     assert cli_main(["validate", "workspace", str(tmp_path)]) == 0
 
 

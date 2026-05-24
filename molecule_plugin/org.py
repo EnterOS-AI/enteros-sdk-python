@@ -49,6 +49,12 @@ from .workspace import SUPPORTED_RUNTIMES, ValidationError
 _WORKSPACE_ACCESS_VALUES = frozenset({"none", "read_only", "read_write"})
 
 
+def _runtime_allowed(node: dict[str, Any], runtime: Any) -> bool:
+    if runtime in SUPPORTED_RUNTIMES:
+        return True
+    return node.get("external") is True and runtime == "external"
+
+
 def _validate_workspace_node(
     node: Any,
     path: str,
@@ -72,11 +78,12 @@ def _validate_workspace_node(
 
     # Runtime (optional — inherited from defaults)
     runtime = node.get("runtime")
-    if runtime and runtime not in SUPPORTED_RUNTIMES:
+    if runtime and not _runtime_allowed(node, runtime):
         errors.append(
             ValidationError(
                 file_ref,
-                f"{path}: runtime={runtime!r} — must be one of {sorted(SUPPORTED_RUNTIMES)}",
+                f"{path}: runtime={runtime!r} — must be one of {sorted(SUPPORTED_RUNTIMES)}"
+                " or 'external' when external=true",
             )
         )
 

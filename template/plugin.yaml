@@ -10,7 +10,7 @@ tags: [example]
 # to a raw-drop (files copied, no tools wired — warning surfaced to user).
 runtimes:
   - claude_code
-  - deepagents
+  - codex
 
 # Optional: list of skill directory names under skills/ (for documentation).
 # skills:
