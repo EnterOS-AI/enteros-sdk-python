@@ -26,7 +26,7 @@ jobs:
         run: python -m pytest tests/
 
       - name: Lint
-        run: pip install ruff && ruff check molecule_agent/ molecule_plugin/
+        run: pip install ruff && ruff check molecule_external_workspace/ molecule_plugin/
 
   all-required:
     name: all-required

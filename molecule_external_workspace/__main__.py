@@ -1,4 +1,4 @@
-"""CLI for molecule_agent — python -m molecule_agent [command]
+"""CLI for molecule_external_workspace — python -m molecule_external_workspace [command]
 
 Commands:
     verify-sha256 <plugin-dir>    Compute the content-integrity SHA256 for a
@@ -179,7 +179,7 @@ def _connect_command(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="molecule_agent",
+        prog="molecule_external_workspace",
         description="Molecule AI remote-agent CLI utilities.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

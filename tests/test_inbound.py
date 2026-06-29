@@ -25,7 +25,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from molecule_agent import (
+from molecule_external_workspace import (
     CursorLostError,
     InboundMessage,
     PollDelivery,
@@ -33,7 +33,7 @@ from molecule_agent import (
     RemoteAgentClient,
     WorkspaceState,
 )
-from molecule_agent.inbound import _parse_activity_row
+from molecule_external_workspace.inbound import _parse_activity_row
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +377,7 @@ def test_fetch_inbound_peer_id_filter():
     session = MagicMock()
     rows = [{"id": "act-peer", "source_id": "peer-ops", "data": {"source": "peer_agent", "text": "hi"}}]
     session.get.return_value = FakeResponse(200, rows)
-    from molecule_agent import RemoteAgentClient
+    from molecule_external_workspace import RemoteAgentClient
     client = RemoteAgentClient(
         workspace_id="ws-abc",
         platform_url="http://platform.test",
@@ -395,7 +395,7 @@ def test_fetch_inbound_before_ts_filter():
     session = MagicMock()
     rows = [{"id": "act-old", "data": {"source": "canvas_user", "text": "hi"}}]
     session.get.return_value = FakeResponse(200, rows)
-    from molecule_agent import RemoteAgentClient
+    from molecule_external_workspace import RemoteAgentClient
     client = RemoteAgentClient(
         workspace_id="ws-abc",
         platform_url="http://platform.test",
@@ -413,7 +413,7 @@ def test_fetch_inbound_combined_filters():
     session = MagicMock()
     rows = [{"id": "act-combo", "source_id": "peer-x", "data": {"source": "peer_agent", "text": "combo"}}]
     session.get.return_value = FakeResponse(200, rows)
-    from molecule_agent import RemoteAgentClient
+    from molecule_external_workspace import RemoteAgentClient
     client = RemoteAgentClient(
         workspace_id="ws-abc",
         platform_url="http://platform.test",
@@ -1007,7 +1007,7 @@ def test_run_agent_loop_swallows_task_supplier_exception(
 def test_run_agent_loop_exits_on_stop_event(client: RemoteAgentClient, monkeypatch):
     """stop_event.set() before calling the loop causes immediate 'stopped' exit."""
     import threading
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")

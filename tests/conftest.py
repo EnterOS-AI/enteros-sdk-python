@@ -1,4 +1,4 @@
-"""Pytest fixtures and helpers for molecule_agent tests.
+"""Pytest fixtures and helpers for molecule_external_workspace tests.
 
 All fixtures are function-scoped unless noted.  No live platform required —
 all HTTP is mocked via ``unittest.mock``.
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from molecule_agent import RemoteAgentClient
+from molecule_external_workspace import RemoteAgentClient
 
 
 # ---------------------------------------------------------------------------

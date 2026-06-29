@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from molecule_agent import RemoteAgentClient
+from molecule_external_workspace import RemoteAgentClient
 
 
 # ---------------------------------------------------------------------------

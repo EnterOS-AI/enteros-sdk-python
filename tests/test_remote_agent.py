@@ -1,4 +1,4 @@
-"""Tests for the molecule_agent Phase 30.8 remote-agent client.
+"""Tests for the molecule_external_workspace Phase 30.8 remote-agent client.
 
 The client is pure HTTP — we mock the network via ``requests_mock``-style
 monkey-patching of ``requests.Session.get`` / ``.post`` instead of pulling
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from molecule_agent import PeerInfo, RemoteAgentClient, WorkspaceState
+from molecule_external_workspace import PeerInfo, RemoteAgentClient, WorkspaceState
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ def test_heartbeat_sends_full_payload(client: RemoteAgentClient):
 
 def test_run_loop_exits_on_max_iterations(client: RemoteAgentClient, monkeypatch):
     # Stub sleep so the test doesn't actually wait
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -289,7 +289,7 @@ def test_run_loop_exits_on_max_iterations(client: RemoteAgentClient, monkeypatch
 
 
 def test_run_loop_exits_on_paused(client: RemoteAgentClient, monkeypatch):
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -309,7 +309,7 @@ def test_run_loop_exits_on_paused(client: RemoteAgentClient, monkeypatch):
 
 
 def test_run_loop_exits_on_deleted_404(client: RemoteAgentClient, monkeypatch):
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -324,7 +324,7 @@ def test_run_loop_exits_on_deleted_404(client: RemoteAgentClient, monkeypatch):
 
 def test_run_loop_continues_through_transient_errors(client: RemoteAgentClient, monkeypatch):
     """Network hiccups must log-and-continue, never crash the loop."""
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -346,7 +346,7 @@ def test_run_loop_continues_through_transient_errors(client: RemoteAgentClient, 
 
 
 def test_run_loop_task_supplier_reported(client: RemoteAgentClient, monkeypatch):
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -373,7 +373,7 @@ def test_run_loop_exits_on_stop_event(client: RemoteAgentClient, monkeypatch):
     """stop_event.set() before calling the loop causes immediate 'stopped' exit,
     before the first heartbeat is sent."""
     import threading
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
     monkeypatch.setattr(mod.time, "sleep", lambda s: None)
 
     client.save_token("t")
@@ -396,7 +396,7 @@ def test_run_loop_respects_stop_event_between_iterations(
 ):
     """stop_event.set() mid-run causes exit after the current iteration finishes."""
     import threading
-    import molecule_agent.client as mod
+    import molecule_external_workspace.client as mod
 
     # Don't stub sleep — we need the event to fire *between* iterations
     call_count = [0]
@@ -625,7 +625,7 @@ def test_peer_info_dataclass_defaults():
 import io
 import tarfile
 
-from molecule_agent.client import _safe_extract_tar
+from molecule_external_workspace.client import _safe_extract_tar
 
 
 def _make_tarball(files: dict[str, bytes]) -> bytes:
@@ -799,7 +799,7 @@ def test_install_plugin_404_raises_with_useful_url(client: RemoteAgentClient):
 
 import hashlib
 
-from molecule_agent.client import make_idempotency_key, strip_a2a_boundary
+from molecule_external_workspace.client import make_idempotency_key, strip_a2a_boundary
 
 
 def test_delegate_posts_task_and_idempotency_key(client: RemoteAgentClient):
@@ -1099,7 +1099,7 @@ def test_safe_extract_logs_warning_for_skipped_symlink(tmp_path: Path, caplog):
 # verify_plugin_sha256 + content integrity
 # ---------------------------------------------------------------------------
 
-from molecule_agent.client import _sha256_file, _walk_files, verify_plugin_sha256
+from molecule_external_workspace.client import _sha256_file, _walk_files, verify_plugin_sha256
 
 
 def test_sha256_file_computes_correct_hash(tmp_path: Path):

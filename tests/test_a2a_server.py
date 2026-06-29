@@ -1,4 +1,4 @@
-"""Tests for molecule_agent.a2a_server."""
+"""Tests for molecule_external_workspace.a2a_server."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from molecule_agent.a2a_server import A2AServer
+from molecule_external_workspace.a2a_server import A2AServer
 
 
 # ---------------------------------------------------------------------------

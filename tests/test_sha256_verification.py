@@ -27,7 +27,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 
-from molecule_agent.client import (
+from molecule_external_workspace.client import (
     RemoteAgentClient,
     verify_plugin_sha256,
 )
@@ -161,7 +161,7 @@ class TestVerifyPluginSha256Server:
         (tmp_path / "rules.md").write_text("- be kind\n")
 
         import hashlib, json
-        from molecule_agent.client import _sha256_file, _walk_files
+        from molecule_external_workspace.client import _sha256_file, _walk_files
 
         file_hashes = [
             ("rules.md", _sha256_file(tmp_path / "rules.md")),
@@ -234,7 +234,7 @@ class TestVerifyPluginSha256Server:
         (tmp_path / "secret.md").write_text("original content")
 
         import hashlib, json
-        from molecule_agent.client import _sha256_file
+        from molecule_external_workspace.client import _sha256_file
 
         # Compute the hash for the tampered content (different from original)
         tampered_hash = _sha256_file(tmp_path / "secret.md")
@@ -253,13 +253,13 @@ class TestVerifyPluginSha256Server:
         (tmp_path / "secret.md").write_text("TAMPERED CONTENT")
 
         # verify_plugin_sha256 should return False (local check)
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         assert verify_plugin_sha256(tmp_path, manifest_hash) is False
 
     def test_invalid_expected_sha256_raises_value_error(self, tmp_path: Path):
         """Passing a malformed expected hash raises ValueError immediately."""
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         with pytest.raises(ValueError, match="64-character lowercase hex"):
             verify_plugin_sha256(tmp_path, "not-64-chars")
@@ -275,7 +275,7 @@ class TestVerifyPluginSha256Server:
 
     def test_empty_plugin_dir_sha256(self, tmp_path: Path):
         """An empty plugin dir (only plugin.yaml) has a specific manifest hash."""
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         # plugin.yaml is excluded from the manifest, so the hash is for "[]"
         import hashlib
@@ -290,7 +290,7 @@ class TestVerifyPluginSha256Server:
 
     def test_verify_plugin_sha256_excludes_plugin_yaml_from_manifest(self, tmp_path: Path):
         """plugin.yaml must never be included in its own content manifest hash."""
-        from molecule_agent.client import verify_plugin_sha256, _sha256_file
+        from molecule_external_workspace.client import verify_plugin_sha256, _sha256_file
 
         (tmp_path / "plugin.yaml").write_text("name: self-ref\nsha256: irrelevant\n")
         (tmp_path / "data.txt").write_text("hello world")
@@ -322,7 +322,7 @@ class TestVerifyPluginSha256Server:
         ``_is_hex`` accepts them and no ValueError is raised. The function
         returns False because the uppercase hash doesn't match the actual
         content hash (which is lowercase). This documents actual behavior."""
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         (tmp_path / "plugin.yaml").write_text("name: test\n")
 
@@ -338,7 +338,7 @@ class TestVerifyPluginSha256Server:
 
     def test_non_hex_characters_rejected(self, tmp_path: Path):
         """Only ``g`` and above (non-hex chars) trigger ValueError."""
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         (tmp_path / "plugin.yaml").write_text("name: test\n")
 
@@ -348,7 +348,7 @@ class TestVerifyPluginSha256Server:
 
     def test_deep_nested_file_paths_hashed_deterministically(self, tmp_path: Path):
         """Deeply nested files produce stable, sorted manifest hashes."""
-        from molecule_agent.client import verify_plugin_sha256, _sha256_file
+        from molecule_external_workspace.client import verify_plugin_sha256, _sha256_file
 
         nested = tmp_path / "a" / "b" / "c"
         nested.mkdir(parents=True)
@@ -379,7 +379,7 @@ class TestVerifyPluginSha256Server:
 
     def test_file_order_independence(self, tmp_path: Path):
         """The manifest hash must be the same regardless of directory iteration order."""
-        from molecule_agent.client import _sha256_file
+        from molecule_external_workspace.client import _sha256_file
 
         # Create files in deliberately non-alphabetical order
         (tmp_path / "z_file.txt").write_text("z")
@@ -396,7 +396,7 @@ class TestVerifyPluginSha256Server:
             json.dumps(sorted(file_hashes), sort_keys=True).encode()
         ).hexdigest()
 
-        from molecule_agent.client import verify_plugin_sha256
+        from molecule_external_workspace.client import verify_plugin_sha256
 
         assert verify_plugin_sha256(tmp_path, manifest_hash) is True
 
@@ -412,7 +412,7 @@ class TestVerifyPluginSha256Server:
 
     def test_large_plugin_directory_hash(self, tmp_path: Path):
         """A directory with many files hashes correctly (no path limit)."""
-        from molecule_agent.client import verify_plugin_sha256, _sha256_file, _walk_files
+        from molecule_external_workspace.client import verify_plugin_sha256, _sha256_file, _walk_files
 
         # Create 50 files to exercise the sort and hashing path
         for i in range(50):
@@ -436,7 +436,7 @@ class TestVerifyPluginSha256Server:
     ):
         """When sha256 declared in plugin.yaml doesn't match unpacked content,
         install_plugin raises ValueError and setup.sh is NOT executed."""
-        from molecule_agent.client import RemoteAgentClient
+        from molecule_external_workspace.client import RemoteAgentClient
 
         # Plugin with a deliberately wrong sha256
         wrong_sha = "deadbeef" + "0" * 56

@@ -28,7 +28,7 @@ Format per entry:
 
 ## KI-001 — RemoteAgentClient does not implement inbound A2A server
 
-**File:** `molecule_agent/client.py`, `molecule_agent/a2a_server.py`, `molecule_agent/inbound.py`  
+**File:** `molecule_external_workspace/client.py`, `molecule_external_workspace/a2a_server.py`, `molecule_external_workspace/inbound.py`  
 **Status:** ✅ Resolved  
 **Severity:** Medium  
 **Platform phase:** Phase 30.8b
@@ -36,13 +36,13 @@ Format per entry:
 ### Resolution
 The SDK now ships two inbound delivery paths:
 
-**Push mode (`A2AServer`)** — `molecule_agent.a2a_server.A2AServer` exposes an HTTP
+**Push mode (`A2AServer`)** — `molecule_external_workspace.a2a_server.A2AServer` exposes an HTTP
 server with a `POST /a2a/inbound` endpoint. It runs in a background daemon thread
 alongside the client's heartbeat loop. Use with `PushDelivery` from `inbound.py`:
 
 ```python
-from molecule_agent import RemoteAgentClient, A2AServer
-from molecule_agent.inbound import PushDelivery
+from molecule_external_workspace import RemoteAgentClient, A2AServer
+from molecule_external_workspace.inbound import PushDelivery
 
 server = A2AServer(agent_id=workspace_id, inbound_url="https://...", message_handler=my_handler)
 server.start_in_background()
@@ -59,10 +59,10 @@ interval (default 5s). Both paths feed the same `MessageHandler` callback.
 `run_agent_loop` picks `PollDelivery` automatically when no explicit delivery is passed.
 
 ### Files added
-- `molecule_agent/a2a_server.py` — `A2AServer` class; `HTTPServer` + `_A2AHandler`
+- `molecule_external_workspace/a2a_server.py` — `A2AServer` class; `HTTPServer` + `_A2AHandler`
   running in a daemon thread; handles `POST /a2a/inbound`, async/sync handlers,
   graceful stop.
-- `molecule_agent/inbound.py` — `InboundDelivery` protocol, `PollDelivery`,
+- `molecule_external_workspace/inbound.py` — `InboundDelivery` protocol, `PollDelivery`,
   `PushDelivery` (wraps `A2AServer`), `InboundMessage`, `MessageHandler`.
 - `RemoteAgentClient.run_agent_loop` updated to accept any `InboundDelivery`.
 
@@ -70,7 +70,7 @@ interval (default 5s). Both paths feed the same `MessageHandler` callback.
 
 ## KI-002 — Delegation has no server-side idempotency key enforcement
 
-**File:** `molecule_agent/client.py` (client-side SHA256 key)  
+**File:** `molecule_external_workspace/client.py` (client-side SHA256 key)  
 **Status:** Partially mitigated client-side (SHA256 rounded-to-minute)  
 **Severity:** Medium  
 **Platform phase:** Phase 30.6
@@ -98,7 +98,7 @@ the server that needs to honor it.
 
 ## KI-003 — `_safe_extract_tar` silently skips all symlinks
 
-**File:** `molecule_agent/client.py:_safe_extract_tar`  
+**File:** `molecule_external_workspace/client.py:_safe_extract_tar`  
 **Status:** ✅ Resolved  
 **Severity:** Low (misleading behavior)
 
@@ -126,7 +126,7 @@ symlinks. Document the behavior in the plugin authoring guide.
 
 ## KI-004 — Token file races between concurrent instances of RemoteAgentClient
 
-**File:** `molecule_agent/client.py` (token caching)  
+**File:** `molecule_external_workspace/client.py` (token caching)  
 **Status:** ✅ Resolved  
 **Severity:** Low
 
@@ -178,7 +178,7 @@ known secret pattern.
 
 ## KI-006 — Plugin content integrity not verified client-side (RESOLVED)
 
-**File:** `molecule_agent/client.py:verify_plugin_sha256`, `molecule_plugin/manifest.py:validate_manifest`  
+**File:** `molecule_external_workspace/client.py:verify_plugin_sha256`, `molecule_plugin/manifest.py:validate_manifest`  
 **Status:** ✅ Implemented — see SDK PR on `docs/add-claude-md` branch  
 **Severity:** Medium (mitigated by platform-side pinned-ref enforcement from molecule-core PR #1019)
 
@@ -203,14 +203,14 @@ or semver tags). SDK-side closes the content-integrity gap. Together they cover
 both the "which code was fetched" and "did it arrive intact" axes.
 
 Authors should add `sha256` to their `plugin.yaml` (generate with
-`python -m molecule_agent verify-sha256 <plugin-dir>`) and commit it alongside
+`python -m molecule_external_workspace verify-sha256 <plugin-dir>`) and commit it alongside
 the plugin content.
 
 ---
 
 ## KI-007 — `_is_hex` raises `TypeError` on non-string arguments instead of returning `False`
 
-**File:** `molecule_agent/client.py:_is_hex`  
+**File:** `molecule_external_workspace/client.py:_is_hex`  
 **Status:** ✅ Fixed — isinstance guard added  
 **Resolved in:** `fix/ki-005-ki-007` branch  
 **Severity:** Low
@@ -258,7 +258,7 @@ def _is_hex(value: str) -> bool:
 
 ## KI-009 — `run_heartbeat_loop()` does not honour external stop signals
 
-**File:** `molecule_agent/client.py` (`RemoteAgentClient.run_heartbeat_loop`,
+**File:** `molecule_external_workspace/client.py` (`RemoteAgentClient.run_heartbeat_loop`,
 `RemoteAgentClient.run_agent_loop`)
 **Status:** ✅ Resolved (PR: `feat/ki-009-stop-event`)
 **Severity:** Low
@@ -274,7 +274,7 @@ Callers achieve graceful shutdown by setting the event from a SIGTERM handler:
 
 ```python
 import signal, threading
-from molecule_agent import RemoteAgentClient
+from molecule_external_workspace import RemoteAgentClient
 
 stop = threading.Event()
 client = RemoteAgentClient(...)

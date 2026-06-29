@@ -47,7 +47,7 @@ PLUGIN_YAML_SCHEMA: dict[str, Any] = {
                 "as a content-addressed manifest. If present, install_plugin() verifies "
                 "the unpacked tarball matches before running setup.sh. "
                 "Format: 64 lowercase hex characters. "
-                "Generate with: python -m molecule_agent verify-sha256 <plugin-dir>"
+                "Generate with: python -m molecule_external_workspace verify-sha256 <plugin-dir>"
             ),
         },
     },

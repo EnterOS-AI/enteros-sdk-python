@@ -1,6 +1,6 @@
 """A2A server for inbound agent calls.
 
-Bundled alongside :class:`molecule_agent.client.RemoteAgentClient` to
+Bundled alongside :class:`molecule_external_workspace.client.RemoteAgentClient` to
 enable remote agents to receive A2A calls from the platform without
 requiring the agent author to provision their own HTTP endpoint.
 
@@ -10,7 +10,7 @@ registered remote agent.
 
 Usage::
 
-    from molecule_agent import RemoteAgentClient, A2AServer
+    from molecule_external_workspace import RemoteAgentClient, A2AServer
 
     client = RemoteAgentClient(workspace_id="...", platform_url="...")
     server = A2AServer(
@@ -136,7 +136,7 @@ class _A2AHandler(BaseHTTPRequestHandler):
 
 class A2AServer:
     """HTTP server that receives inbound A2A calls and dispatches them to a
-    handler running alongside :class:`~molecule_agent.client.RemoteAgentClient`.
+    handler running alongside :class:`~molecule_external_workspace.client.RemoteAgentClient`.
 
     Args:
         agent_id: The workspace / agent identifier. Used in log messages.
