@@ -3,13 +3,13 @@ network and register as first-class workspaces.
 
 This is the Phase 30.8 companion to ``molecule_plugin`` (for plugin authors).
 Where ``molecule_plugin`` helps you ship installable behavior for workspaces
-that already exist, ``molecule_agent`` helps you *be* a workspace from the
+that already exist, ``molecule_external_workspace`` helps you *be* a workspace from the
 other side of the wire: register, authenticate, pull secrets, heartbeat,
 and detect pause/resume/delete — all via the Phase 30.1–30.5 HTTP contract.
 
 Intended usage::
 
-    from molecule_agent import RemoteAgentClient
+    from molecule_external_workspace import RemoteAgentClient
 
     client = RemoteAgentClient(
         workspace_id="550e8400-e29b-41d4-a716-446655440000",
@@ -54,7 +54,7 @@ from .inbound import (
 )
 
 # compute_plugin_sha256 lives in __main__ (the CLI entry point).
-# Import it here so `from molecule_agent import compute_plugin_sha256` works.
+# Import it here so `from molecule_external_workspace import compute_plugin_sha256` works.
 from .__main__ import compute_plugin_sha256
 
 __all__ = [

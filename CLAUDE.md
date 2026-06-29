@@ -4,7 +4,7 @@
 
 Python SDK for the Molecule AI agent platform. Exposes two user-facing packages:
 
-- **`molecule_agent`** — Phase 30.8 remote-agent client. Write an agent that runs
+- **`molecule_external_workspace`** — Phase 30.8 remote-agent client. Write an agent that runs
   outside the platform's Docker network; it registers with the platform, pulls
   secrets, sends heartbeats, and detects pause/delete. Wraps the Phase 30.1–30.7
   HTTP contract (register, secrets, heartbeat, state-poll, A2A peer discovery,
@@ -30,7 +30,7 @@ pip install -e .
 pip install -e '.[test]'
 pytest
 
-# Run only molecule_agent tests (remote-agent client)
+# Run only molecule_external_workspace tests (remote-agent client)
 pytest tests/test_remote_agent.py
 
 # Run only molecule_plugin tests (SDK + validators)
@@ -43,7 +43,7 @@ python -m molecule_plugin validate workspace /path/to/workspace-template/
 ```
 
 Tests use standard `pytest` fixtures with in-memory mocks — no live platform
-required. The `molecule_agent` tests mock `requests.Session` directly via
+required. The `molecule_external_workspace` tests mock `requests.Session` directly via
 `unittest.mock.MagicMock`.
 
 ---
@@ -51,7 +51,7 @@ required. The `molecule_agent` tests mock `requests.Session` directly via
 ## Package conventions
 
 ```
-molecule_agent/          # Remote-agent client (blocking requests, Phase 30)
+molecule_external_workspace/          # Remote-agent client (blocking requests, Phase 30)
   client.py              # RemoteAgentClient, WorkspaceState, PeerInfo,
                         # make_idempotency_key, _safe_extract_tar
 
@@ -77,7 +77,7 @@ examples/remote-agent/   # Runnable Phase 30.1–30.5 demo
   run.py
 ```
 
-### Adding a new tool or endpoint to molecule_agent
+### Adding a new tool or endpoint to molecule_external_workspace
 
 1. Pick the Phase 30 sub-phase that matches the contract (e.g. 30.6 = peer
    discovery).
@@ -124,7 +124,7 @@ secrets before the first release.
 
 ## Platform integration notes
 
-`molecule_agent` wraps these Phase 30 HTTP endpoints (all require bearer token
+`molecule_external_workspace` wraps these Phase 30 HTTP endpoints (all require bearer token
 unless noted):
 
 | Method | Endpoint | Phase | Auth |
@@ -163,7 +163,7 @@ content-addressed manifest of all files except `plugin.yaml` (excluded to avoid
 circularity). Generate the hash for a local plugin:
 
 ```bash
-python -m molecule_agent verify-sha256 ./my-plugin-dir
+python -m molecule_external_workspace verify-sha256 ./my-plugin-dir
 # Outputs: Computed SHA256: <64-char hash>
 # Paste the hash into plugin.yaml under the sha256 field.
 ```
@@ -172,7 +172,7 @@ python -m molecule_agent verify-sha256 ./my-plugin-dir
 
 ## SDK-specific conventions
 
-- **Python:** `>=3.11`, no external async dependencies in `molecule_agent`
+- **Python:** `>=3.11`, no external async dependencies in `molecule_external_workspace`
   (uses blocking `requests` so it embeds in any event loop). `molecule_plugin`
   adaptor methods are `async` (`install`/`uninstall` satisfy `PluginAdaptor`).
 
@@ -204,7 +204,7 @@ python -m molecule_agent verify-sha256 ./my-plugin-dir
   first**. Do not patch silently — the SDK is consumed across multiple
   runtime environments and silent patches can cause subtle breakage elsewhere.
 
-- `molecule_agent` ships two inbound delivery paths: **push** (Phase 30.8b,
+- `molecule_external_workspace` ships two inbound delivery paths: **push** (Phase 30.8b,
   `A2AServer` — for agents with a publicly reachable URL) and **poll** (Phase
   30.8c, `PollDelivery` — for agents behind NAT or without a public endpoint,
   the typical case for hermes-self-hosted, codex, and similar OSS runtimes).
@@ -214,7 +214,7 @@ python -m molecule_agent verify-sha256 ./my-plugin-dir
   `client.reply(msg, text)`.
 
 - One-line bootstrap for poll-mode agents:
-  `python -m molecule_agent connect --platform-url … --workspace-id … --token … --handler my_module:fn`.
+  `python -m molecule_external_workspace connect --platform-url … --workspace-id … --token … --handler my_module:fn`.
   Picks `PollDelivery` automatically when `--reported-url` is empty; SIGTERM/SIGINT
   shut the loop down cleanly. Cursor optionally persisted to `--cursor-file` so
   restarts resume from the last-seen activity row.

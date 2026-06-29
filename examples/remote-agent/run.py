@@ -40,7 +40,7 @@ import logging
 import os
 import sys
 
-# Local-dev import path — when installed via pip the molecule_agent package
+# Local-dev import path — when installed via pip the molecule_external_workspace package
 # resolves normally; when running from the repo checkout we add sdk/python/
 # to sys.path so you can run `python3 run.py` without a pip install.
 _here = os.path.dirname(os.path.abspath(__file__))
@@ -48,7 +48,7 @@ _sdk = os.path.join(_here, "..", "..", "sdk", "python")
 if os.path.isdir(_sdk) and _sdk not in sys.path:
     sys.path.insert(0, _sdk)
 
-from molecule_agent import RemoteAgentClient  # noqa: E402
+from molecule_external_workspace import RemoteAgentClient  # noqa: E402
 
 
 def main() -> int:

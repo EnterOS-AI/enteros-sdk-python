@@ -1,4 +1,4 @@
-# molecule_agent — Remote-agent SDK for Molecule AI
+# molecule_external_workspace — Remote-agent SDK for Molecule AI
 
 Build a Python agent that runs **outside** a Molecule AI platform's Docker network
 and registers as a first-class workspace. The agent gets bearer-token auth,
@@ -12,7 +12,7 @@ imports.
 
 ## What this is / what this isn't
 
-| | `molecule_agent` (this package) | `molecule-ai-workspace-runtime` (separate PyPI wheel) |
+| | `molecule_external_workspace` (this package) | `molecule-ai-workspace-runtime` (separate PyPI wheel) |
 |---|---|---|
 | **Where it runs** | OUTSIDE Molecule workspaces — your laptop, CI runner, external cloud VM, sidecar service | INSIDE the workspace container, started by the platform |
 | **What it talks to** | The platform's HTTP API (`/registry/*`, `/workspaces/:id/*`) | The platform's MCP server (`molecule_*` tools) plus the platform-managed A2A bus |
@@ -29,7 +29,7 @@ in-workspace-runtime authoring guide.
 ## Install
 
 ```bash
-pip install molecule-ai-sdk     # ships molecule_plugin + molecule_agent
+pip install molecule-ai-sdk     # ships molecule_plugin + molecule_external_workspace
 ```
 
 For the current internal release, install from Molecule's Gitea PyPI registry
@@ -44,7 +44,7 @@ pip install \
 ## 60-second example
 
 ```python
-from molecule_agent import RemoteAgentClient
+from molecule_external_workspace import RemoteAgentClient
 
 client = RemoteAgentClient(
     workspace_id="<the-uuid-of-an-external-workspace-on-the-platform>",
@@ -100,7 +100,7 @@ Two ways an external agent can receive A2A messages:
 Both dispatch to the same `MessageHandler` callback through `run_agent_loop`:
 
 ```python
-from molecule_agent import RemoteAgentClient, InboundMessage
+from molecule_external_workspace import RemoteAgentClient, InboundMessage
 
 def my_handler(msg: InboundMessage, client: RemoteAgentClient) -> str | None:
     print(f"← {msg.source}: {msg.text}")
@@ -205,7 +205,7 @@ The markers signal that the enclosed content is untrusted third-party output.
 Use ``strip_a2a_boundary()`` to remove them before passing the response to
 your agent context::
 
-    from molecule_agent import RemoteAgentClient, strip_a2a_boundary
+    from molecule_external_workspace import RemoteAgentClient, strip_a2a_boundary
 
     result = client.call_peer(target_id, "do the thing")
     raw_text = result.get("result", {}).get("text", "")
@@ -215,12 +215,12 @@ The function returns the input unchanged if the markers are absent (platform
 versions older than the OFFSEC-003 rollout), so it is safe to call on any
 response.
 
-## CLI: `molecule_agent connect`
+## CLI: `molecule_external_workspace connect`
 
 One command bootstraps the full poll-mode loop. No code beyond your handler:
 
 ```bash
-python -m molecule_agent connect \
+python -m molecule_external_workspace connect \
     --platform-url https://your-tenant.moleculesai.app \
     --workspace-id 550e8400-… \
     --token your-workspace-token \
@@ -277,7 +277,7 @@ reference it directly.
   injects them automatically on every request:
 
   ```python
-  from molecule_agent import RemoteAgentClient
+  from molecule_external_workspace import RemoteAgentClient
 
   client = RemoteAgentClient(
       workspace_id="…",

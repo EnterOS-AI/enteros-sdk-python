@@ -8,7 +8,7 @@ import tomllib
 import pytest
 import yaml
 
-import molecule_agent
+import molecule_external_workspace
 import molecule_plugin
 from molecule_plugin import (
     SUPPORTED_CHANNEL_TYPES,
@@ -101,7 +101,7 @@ def test_supported_runtimes_contains_known():
 def test_package_versions_match_pyproject():
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     expected = pyproject["project"]["version"]
-    assert molecule_agent.__version__ == expected
+    assert molecule_external_workspace.__version__ == expected
     assert molecule_plugin.__version__ == expected
 
 

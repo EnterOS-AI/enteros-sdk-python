@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from molecule_agent.client import _safe_extract_tar
+from molecule_external_workspace.client import _safe_extract_tar
 
 
 # ---------------------------------------------------------------------------

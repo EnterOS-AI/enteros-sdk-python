@@ -13,7 +13,7 @@ a Phase 30 endpoint:
 
 No inbound A2A server is bundled here yet — that requires hosting an HTTP
 endpoint the platform's proxy can reach, which is network-dependent.
-Use :class:`molecule_agent.a2a_server.A2AServer` to add inbound A2A support.
+Use :class:`molecule_external_workspace.a2a_server.A2AServer` to add inbound A2A support.
 See that module for usage and the Phase 30.8b contract.
 """
 from __future__ import annotations
@@ -818,9 +818,9 @@ class RemoteAgentClient:
 
         Hits ``GET /workspaces/:id/activity?type=…&since_id=…&peer_id=…&before_ts=…&limit=…``.
         Returns the rows newer than ``since_id`` in oldest-first order,
-        parsed into :class:`~molecule_agent.inbound.InboundMessage`.
+        parsed into :class:`~molecule_external_workspace.inbound.InboundMessage`.
 
-        Used by :class:`~molecule_agent.inbound.PollDelivery`; most callers
+        Used by :class:`~molecule_external_workspace.inbound.PollDelivery`; most callers
         should drive this through :py:meth:`run_agent_loop` rather than
         polling manually.
 
@@ -844,7 +844,7 @@ class RemoteAgentClient:
             List of :class:`InboundMessage`, oldest first. May be empty.
 
         Raises:
-            :class:`~molecule_agent.inbound.CursorLostError`: if the server
+            :class:`~molecule_external_workspace.inbound.CursorLostError`: if the server
                 returns 410 Gone (cursor's row has been rotated out of the
                 activity window). Caller should reset the cursor and retry.
             ``requests.HTTPError``: on other non-2xx responses (401, 5xx, …).

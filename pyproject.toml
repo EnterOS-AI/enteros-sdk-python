@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "molecule-ai-sdk"
 version = "0.2.1"
-description = "Molecule AI SDK — build plugins (molecule_plugin) AND remote agents that join a Molecule AI org from another machine (molecule_agent)."
+description = "Molecule AI SDK — build plugins (molecule_plugin) AND remote agents that join a Molecule AI org from another machine (molecule_external_workspace)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -34,5 +34,5 @@ Repository = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python"
 Documentation = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python#readme"
 
 [tool.setuptools.packages.find]
-include = ["molecule_plugin*", "molecule_agent*"]
+include = ["molecule_plugin*", "molecule_external_workspace*"]
 exclude = ["template*", "tests*"]

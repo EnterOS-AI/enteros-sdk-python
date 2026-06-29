@@ -1,4 +1,4 @@
-"""Tests for `python -m molecule_agent connect` CLI handler resolution.
+"""Tests for `python -m molecule_external_workspace connect` CLI handler resolution.
 
 Run-loop integration is covered by tests/test_inbound.py — these tests only
 exercise the CLI's argument parsing, handler resolution, and the
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from molecule_agent.__main__ import _resolve_handler
+from molecule_external_workspace.__main__ import _resolve_handler
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def test_connect_command_register_failure_returns_2(tmp_path: Path, monkeypatch)
         """,
     )
 
-    from molecule_agent import __main__ as cli_mod
+    from molecule_external_workspace import __main__ as cli_mod
 
     args = MagicMock()
     args.handler = "rcfail_mod:fn"
@@ -122,7 +122,7 @@ def test_connect_command_register_failure_returns_2(tmp_path: Path, monkeypatch)
     fake_client.load_token.return_value = None  # no cached token
     fake_client.register.side_effect = RuntimeError("network sad")
 
-    with patch("molecule_agent.client.RemoteAgentClient", return_value=fake_client):
+    with patch("molecule_external_workspace.client.RemoteAgentClient", return_value=fake_client):
         rc = cli_mod._connect_command(args)
     assert rc == 2
 
@@ -137,7 +137,7 @@ def test_connect_command_uses_provided_token_skips_register(tmp_path: Path, monk
         """,
     )
 
-    from molecule_agent import __main__ as cli_mod
+    from molecule_external_workspace import __main__ as cli_mod
 
     args = MagicMock()
     args.handler = "tokset_mod:fn"
@@ -158,7 +158,7 @@ def test_connect_command_uses_provided_token_skips_register(tmp_path: Path, monk
     # exits 0 cleanly without us having to signal-break the loop.
     fake_client.run_agent_loop.return_value = "paused"
 
-    with patch("molecule_agent.client.RemoteAgentClient", return_value=fake_client):
+    with patch("molecule_external_workspace.client.RemoteAgentClient", return_value=fake_client):
         rc = cli_mod._connect_command(args)
 
     assert rc == 0

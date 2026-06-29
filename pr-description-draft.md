@@ -24,10 +24,10 @@ Add a content-addressed manifest hash to `plugin.yaml` and verify it before runn
 
 | File | Change |
 |------|--------|
-| `molecule_agent/client.py` | Added `verify_plugin_sha256()`, `_walk_files()`, `_sha256_file()`, integrated into `install_plugin()` before `setup.sh` runs |
-| `molecule_agent/__main__.py` | Added CLI: `python -m molecule_agent verify-sha256 <plugin-dir>` to compute the hash for a plugin directory |
+| `molecule_external_workspace/client.py` | Added `verify_plugin_sha256()`, `_walk_files()`, `_sha256_file()`, integrated into `install_plugin()` before `setup.sh` runs |
+| `molecule_external_workspace/__main__.py` | Added CLI: `python -m molecule_external_workspace verify-sha256 <plugin-dir>` to compute the hash for a plugin directory |
 | `molecule_plugin/manifest.py` | Added `sha256` field to `PLUGIN_YAML_SCHEMA`, validation in `validate_manifest()` |
-| `molecule_agent/__init__.py` | Re-export `verify_plugin_sha256` and `compute_plugin_sha256` |
+| `molecule_external_workspace/__init__.py` | Re-export `verify_plugin_sha256` and `compute_plugin_sha256` |
 | `tests/test_remote_agent.py` | 12 new tests covering all sha256 paths, including integration with `install_plugin()` |
 | `known-issues.md` | Updated KI-006 with resolution |
 | `CLAUDE.md` | Added content integrity section documenting the `verify-sha256` CLI |
@@ -38,12 +38,12 @@ Add a content-addressed manifest hash to `plugin.yaml` and verify it before runn
 ```yaml
 name: my-plugin
 version: "1.0"
-sha256: a3f5b8c9d1e2...  # 64 lowercase hex chars; generate with: python -m molecule_agent verify-sha256 <plugin-dir>
+sha256: a3f5b8c9d1e2...  # 64 lowercase hex chars; generate with: python -m molecule_external_workspace verify-sha256 <plugin-dir>
 ```
 
 **Generate the hash for a local plugin directory:**
 ```bash
-python -m molecule_agent verify-sha256 ./my-plugin
+python -m molecule_external_workspace verify-sha256 ./my-plugin
 # Outputs: "Computed SHA256: <64-char hash>"
 # Copy the hash into plugin.yaml under the sha256 field.
 ```
@@ -66,7 +66,7 @@ Total: 143 passed
 ### Migration path for existing plugins
 
 Plugin authors who want to pin their plugin must:
-1. Run `python -m molecule_agent verify-sha256 <plugin-dir>` on the final directory
+1. Run `python -m molecule_external_workspace verify-sha256 <plugin-dir>` on the final directory
 2. Add the hash to `plugin.yaml` under the `sha256` field
 3. Commit and push; CI will verify the hash remains correct
 
