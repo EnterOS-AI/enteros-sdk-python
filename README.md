@@ -8,7 +8,7 @@ on any Molecule AI workspace whose runtime the plugin supports.
 
 Copy the repo's `template/` directory to a new directory and edit it. If you
 installed from PyPI, fetch the template from
-`https://git.moleculesai.app/molecule-ai/molecule-sdk-python/src/branch/main/template`.
+`https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/src/branch/main/template`.
 
 ```
 my-plugin/

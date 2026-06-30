@@ -41,9 +41,9 @@ test = ["pytest-asyncio>=0.24", "jsonschema>=4.18"]
 contracts = ["molecule-ai-contracts>=0.1.0"]
 
 [project.urls]
-Homepage = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python"
-Repository = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python"
-Documentation = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python#readme"
+Homepage = "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk"
+Repository = "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk"
+Documentation = "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk#readme"
 
 [tool.setuptools.packages.find]
 include = ["molecule_plugin*", "molecule_external_workspace*"]

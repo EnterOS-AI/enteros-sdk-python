@@ -1,4 +1,4 @@
-# Known Issues — molecule-sdk-python
+# Known Issues — molecule-ai-sdk
 
 Issues identified in source but not yet filed as GitHub issues (GH_TOKEN
 unavailable in automated agent contexts). Each entry has: location,
