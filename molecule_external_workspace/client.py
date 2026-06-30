@@ -40,6 +40,22 @@ import requests
 if TYPE_CHECKING:
     from .inbound import InboundDelivery, InboundMessage, MessageHandler
 
+    # SSOT typed payloads (molecule-contracts / RFC molecule-core#3285),
+    # published as `molecule-ai-contracts` on the gitea PyPI registry. Imported
+    # under TYPE_CHECKING only: these are TypedDicts (plain dicts at runtime),
+    # `from __future__ import annotations` keeps every annotation a string, and
+    # the SDK's `pip install` CI resolves from plain PyPI (which does not carry
+    # this package). So there is NO hard runtime dependency — the wire payloads
+    # below stay byte-identical dicts, now checked against the contract shapes
+    # by a type checker for drift-prevention. Install the `contracts` extra
+    # (gitea index) to type-check against it locally.
+    from molecule_ai_contracts.workspace_comms_gen import (
+        HeartbeatRequest,
+        HeartbeatResponse,
+        RegisterRequest,
+        RegisterResponse,
+    )
+
 logger = logging.getLogger(__name__)
 
 # Polling cadence defaults. Chosen to align with the platform's 60-second
@@ -405,6 +421,14 @@ class RemoteAgentClient:
             Path.home() / ".molecule" / workspace_id
         )
         self._token: str | None = None
+        # The platform_inbound_secret the platform delivers on register + every
+        # heartbeat (RFC #2312). Captured + persisted (0600) alongside the auth
+        # token; fed to an attached A2AServer to fail-close inbound A2A.
+        self._inbound_secret: str | None = None
+        # Optional A2AServer to push a freshly-captured inbound secret to. Wired
+        # by PushDelivery (which holds both client and server) so the secret the
+        # platform delivers flows to the inbound-auth check automatically.
+        self._inbound_server: Any | None = None
         self._start_time = time.time()
 
     # ------------------------------------------------------------------
@@ -485,6 +509,126 @@ class RemoteAgentClient:
             pass
         self._token = token
 
+    # ------------------------------------------------------------------
+    # platform_inbound_secret persistence (RFC #2312)
+    # ------------------------------------------------------------------
+
+    @property
+    def platform_inbound_secret_file(self) -> Path:
+        """On-disk copy of the platform_inbound_secret, alongside the auth
+        token (``~/.molecule/<workspace_id>/.platform_inbound_secret``). 0600.
+        Mirrors the in-container runtime's ``/configs/.platform_inbound_secret``
+        (molecule_runtime.platform_inbound_auth)."""
+        return self._token_dir / ".platform_inbound_secret"
+
+    @property
+    def platform_inbound_secret(self) -> str | None:
+        """The captured inbound secret (in-memory, falling back to disk).
+
+        This is the value an :class:`A2AServer` must verify on inbound A2A
+        calls (the platform signs them ``Authorization: Bearer <secret>``).
+        ``None`` until the first register/heartbeat that carries it.
+        """
+        return self.load_platform_inbound_secret()
+
+    def load_platform_inbound_secret(self) -> str | None:
+        """Load the cached inbound secret from disk if present. Populates the
+        in-memory cache on success. Same shared-lock, fail-soft semantics as
+        :py:meth:`load_token`."""
+        if self._inbound_secret is not None:
+            return self._inbound_secret
+        if not self.platform_inbound_secret_file.exists():
+            return None
+        try:
+            with self.platform_inbound_secret_file.open("r") as fh:
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except OSError:
+                    return None
+                try:
+                    secret = fh.read().strip()
+                finally:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        except OSError as exc:
+            logger.warning("failed to read %s: %s", self.platform_inbound_secret_file, exc)
+            return None
+        if not secret:
+            return None
+        self._inbound_secret = secret
+        return secret
+
+    def save_platform_inbound_secret(self, secret: str) -> None:
+        """Persist a freshly-received platform_inbound_secret to disk (0600).
+
+        Mirrors :py:meth:`save_token` exactly (0700 dir, 0600 file, exclusive
+        non-blocking lock). Empty/whitespace is ignored — the platform omits
+        the field on fail-open heartbeats and we must not clobber a good
+        secret with an empty one."""
+        secret = secret.strip()
+        if not secret:
+            return
+        self._token_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self._token_dir, 0o700)
+        except OSError:
+            pass
+        with self.platform_inbound_secret_file.open("w") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                logger.warning(
+                    "inbound-secret file %s is locked by another process; skipping write",
+                    self.platform_inbound_secret_file,
+                )
+                self._inbound_secret = secret
+                return
+            try:
+                fh.write(secret)
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        try:
+            os.chmod(self.platform_inbound_secret_file, 0o600)
+        except OSError:
+            pass
+        self._inbound_secret = secret
+
+    def attach_inbound_server(self, server: Any) -> None:
+        """Wire an :class:`A2AServer` so a captured inbound secret is pushed to
+        it automatically. Called by :class:`PushDelivery`. If a secret is
+        already known, it is fed immediately so a restart (secret already on
+        disk) is fail-closed from the first request."""
+        self._inbound_server = server
+        existing = self.load_platform_inbound_secret()
+        if existing:
+            self._feed_inbound_server(existing)
+
+    def _feed_inbound_server(self, secret: str) -> None:
+        server = self._inbound_server
+        if server is None or not secret:
+            return
+        setter = getattr(server, "set_inbound_secret", None)
+        if callable(setter):
+            try:
+                setter(secret)
+            except Exception as exc:  # never let wiring break the hot path
+                logger.warning("failed to feed inbound secret to A2AServer: %s", exc)
+
+    def _capture_inbound_secret(self, data: dict[str, Any] | None) -> None:
+        """Extract + persist the platform_inbound_secret from a register or
+        heartbeat response, and feed it to any attached A2AServer. No-op when
+        the field is absent (fail-open heartbeat / older platform)."""
+        if not isinstance(data, dict):
+            return
+        secret = data.get("platform_inbound_secret")
+        if not isinstance(secret, str) or not secret.strip():
+            return
+        secret = secret.strip()
+        already_had = self._inbound_secret
+        self.save_platform_inbound_secret(secret)
+        self._feed_inbound_server(secret)
+        if not already_had:
+            logger.info("captured platform_inbound_secret (prefix=%s…)", secret[:8])
+
     def _auth_headers(self) -> dict[str, str]:
         tok = self.load_token()
         headers: dict[str, str] = {}
@@ -553,18 +697,25 @@ class RemoteAgentClient:
         # — we use "remote://no-inbound" so the platform can distinguish it
         # from a real HTTP URL and not try to reach the agent.
         reported = self.reported_url or "remote://no-inbound"
+        # Typed against the SSOT contract (molecule-contracts RegisterRequest)
+        # for drift-prevention; the wire payload is the same plain dict.
+        register_body: RegisterRequest = {
+            "id": self.workspace_id,
+            "url": reported,
+            "agent_card": self.agent_card,
+        }
         resp = self._session.post(
             f"{self.platform_url}/registry/register",
             headers=self._auth_headers(),
-            json={
-                "id": self.workspace_id,
-                "url": reported,
-                "agent_card": self.agent_card,
-            },
+            json=register_body,
             timeout=10.0,
         )
         resp.raise_for_status()
-        data = resp.json()
+        data: RegisterResponse = resp.json()
+        # Capture + persist the platform_inbound_secret (delivered on register
+        # and re-delivered on heartbeats) so an attached A2AServer can verify
+        # inbound A2A calls. Must run before the early returns below.
+        self._capture_inbound_secret(data)  # type: ignore[arg-type]
         tok = data.get("auth_token", "")
         if tok:
             self.save_token(tok)
@@ -632,20 +783,31 @@ class RemoteAgentClient:
         """Send a single heartbeat. Safe to call repeatedly — the platform
         treats it as idempotent state-refresh. Raises on non-2xx."""
         uptime = int(time.time() - self._start_time)
+        # Typed against the SSOT contract (molecule-contracts HeartbeatRequest);
+        # same plain dict on the wire.
+        heartbeat_body: HeartbeatRequest = {
+            "workspace_id": self.workspace_id,
+            "current_task": current_task,
+            "active_tasks": active_tasks,
+            "error_rate": error_rate,
+            "sample_error": sample_error,
+            "uptime_seconds": uptime,
+        }
         resp = self._session.post(
             f"{self.platform_url}/registry/heartbeat",
             headers=self._auth_headers(),
-            json={
-                "workspace_id": self.workspace_id,
-                "current_task": current_task,
-                "active_tasks": active_tasks,
-                "error_rate": error_rate,
-                "sample_error": sample_error,
-                "uptime_seconds": uptime,
-            },
+            json=heartbeat_body,
             timeout=10.0,
         )
         resp.raise_for_status()
+        # The platform re-delivers the platform_inbound_secret (lazy-healed) on
+        # most beats — the only delivery path for volume-less SaaS workspaces.
+        # Capture it so the inbound secret stays fresh without a re-register.
+        try:
+            ack: HeartbeatResponse = resp.json()
+        except ValueError:
+            ack = {}  # type: ignore[typeddict-item]
+        self._capture_inbound_secret(ack)  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------
     # Peer discovery + cache (Phase 30.6)

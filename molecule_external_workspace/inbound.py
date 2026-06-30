@@ -388,10 +388,23 @@ class PushDelivery:
         # ``server`` typed Any to avoid a circular import; it's an A2AServer.
         self._client = client
         self._server = server
+        # Wire the server to the client so the platform_inbound_secret captured
+        # on register/heartbeat is fed to the A2AServer's inbound-auth check
+        # automatically. If a secret is already on disk (restart), this makes
+        # the server fail-closed immediately.
+        attach = getattr(client, "attach_inbound_server", None)
+        if callable(attach):
+            attach(server)
 
     def run_once(self, handler: MessageHandler) -> int:  # noqa: ARG002 — handler unused
         # A2AServer dispatches synchronously on its own thread; nothing
-        # for the outer loop to do per-tick.
+        # for the outer loop to do per-tick. Keep the server's inbound secret
+        # in sync in case the platform rotated/lazy-healed it on a heartbeat.
+        secret = getattr(self._client, "platform_inbound_secret", None)
+        if secret:
+            setter = getattr(self._server, "set_inbound_secret", None)
+            if callable(setter):
+                setter(secret)
         return 0
 
     def stop(self) -> None:

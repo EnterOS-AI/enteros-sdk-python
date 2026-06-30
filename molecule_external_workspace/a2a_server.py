@@ -40,6 +40,7 @@ Handlers are invoked on the server's internal thread pool.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import threading
@@ -80,6 +81,50 @@ class _A2AHandler(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
+    # Shared inbound-auth secret (the platform_inbound_secret). Class attribute
+    # mirroring ``_message_handler`` — set by the owning A2AServer in
+    # start_in_background() / set_inbound_secret(). ``None`` means "no secret
+    # configured yet" (legacy unauthenticated passthrough, with a loud warning);
+    # a non-empty value means the inbound endpoint is FAIL-CLOSED and every
+    # request must present ``Authorization: Bearer <secret>``.
+    _inbound_secret: str | None = None
+    # One-shot guard so the "serving inbound WITHOUT auth" warning is logged
+    # once per process rather than on every request.
+    _warned_no_secret: bool = False
+
+    def _inbound_authorized(self) -> bool:
+        """Return True iff this inbound request is allowed to reach the handler.
+
+        Mirrors molecule_runtime.platform_inbound_auth.inbound_authorized — the
+        in-platform consumer of the SAME contract — exactly:
+
+        * No secret configured (``_inbound_secret`` falsy) → legacy
+          unauthenticated passthrough. The platform delivers the
+          platform_inbound_secret on register + every heartbeat, so once the
+          owning RemoteAgentClient has registered this is wired and the branch
+          below (fail-closed) takes over. Until then we allow + warn loudly.
+        * Secret configured → strict, constant-time equality against
+          ``Bearer <secret>``. Absent or mismatched Authorization → reject.
+        """
+        expected = _A2AHandler._inbound_secret
+        if not expected:
+            if not _A2AHandler._warned_no_secret:
+                logger.warning(
+                    "A2AServer is serving POST /a2a/inbound WITHOUT inbound auth "
+                    "(no platform_inbound_secret configured). This is an OPEN RPC "
+                    "endpoint if reachable. Wire the secret via "
+                    "RemoteAgentClient (register/heartbeat persists it) + "
+                    "A2AServer(inbound_secret=...) / set_inbound_secret() to "
+                    "fail closed."
+                )
+                _A2AHandler._warned_no_secret = True
+            return True
+        auth_header = self.headers.get("Authorization", "")
+        # hmac.compare_digest is the stdlib constant-time compare; it avoids
+        # leaking the secret one byte at a time via timing analysis on a
+        # network-reachable endpoint. Length mismatch short-circuits safely.
+        return hmac.compare_digest(auth_header, f"Bearer {expected}")
+
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress default stderr noise; use structured logging instead."""
         logger.debug("%s %s — %s", self.command, self.path, format % args)
@@ -100,6 +145,21 @@ class _A2AHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path != "/a2a/inbound":
             self._send_json(404, {"error": "not found"})
+            return
+
+        # Verify the platform_inbound_secret BEFORE reading the body, so an
+        # unauthenticated caller can neither reach the handler nor make us
+        # buffer an arbitrary-sized payload. Fail-closed when a secret is
+        # configured; reject absent or mismatched bearers with 401.
+        if not self._inbound_authorized():
+            logger.warning("rejected unauthenticated inbound A2A call (401)")
+            # We reject BEFORE reading the request body so an unauthenticated
+            # caller can't make us buffer an arbitrary-sized payload. That
+            # leaves an undrained body on the socket, so close the (HTTP/1.1
+            # keep-alive) connection rather than risk desyncing the next
+            # request on it.
+            self.close_connection = True
+            self._send_json(401, {"error": "unauthorized"})
             return
 
         try:
@@ -152,6 +212,20 @@ class A2AServer:
             proxy or tunnel.
         port: TCP port to listen on. ``0`` picks an available ephemeral port
             (useful when the real public URL is managed by a proxy/tunnel).
+        inbound_secret: The shared ``platform_inbound_secret`` the platform
+            signs proxied inbound A2A calls with (``Authorization: Bearer
+            <secret>``). Additive + optional. When set, the server is
+            FAIL-CLOSED — every inbound request must present the matching
+            bearer or it is rejected with 401. When ``None`` the server keeps
+            the legacy unauthenticated behavior (and logs a loud warning). The
+            secret is normally not known at construction time (the platform
+            delivers it on the register/heartbeat response), so the common
+            flow is to leave this ``None`` and let it be wired after
+            registration via :py:meth:`set_inbound_secret` — which
+            :class:`~molecule_external_workspace.inbound.PushDelivery` does
+            automatically from the owning ``RemoteAgentClient``. Pass it
+            explicitly only when you already hold a persisted secret (e.g. on
+            a restart) and want fail-closed from the first request.
     """
 
     def __init__(
@@ -161,15 +235,39 @@ class A2AServer:
         message_handler: Callable[[dict], dict | Awaitable[dict]],
         host: str = "0.0.0.0",
         port: int = 0,
+        inbound_secret: str | None = None,
     ) -> None:
         self.agent_id = agent_id
         self.inbound_url = inbound_url
         self.host = host
         self.port = port
         self._handler = message_handler
+        self._inbound_secret = inbound_secret or None
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+
+    def set_inbound_secret(self, secret: str | None) -> None:
+        """Set / update the inbound-auth secret after construction.
+
+        Called once the owning :class:`RemoteAgentClient` has captured the
+        ``platform_inbound_secret`` from a register/heartbeat response (the
+        platform re-delivers it on most heartbeats). Idempotent — feeding the
+        same value is a no-op. Updating to a non-empty value flips the server
+        to fail-closed from the next request; passing ``None``/empty is
+        ignored (we never downgrade an already-configured secret to no-auth).
+        Safe to call from another thread: the assignment of a single object
+        reference is atomic under CPython, and the request handler reads the
+        class attribute fresh on every call.
+        """
+        if not secret:
+            return
+        self._inbound_secret = secret
+        # Push to the class attribute the running handler reads, but only when
+        # this instance owns the live server (its handler is wired). Avoids one
+        # A2AServer clobbering another's secret when several are constructed.
+        if self._server is not None:
+            _A2AHandler._inbound_secret = secret
 
     # -------------------------------------------------------------------------
     # Lifecycle
@@ -186,6 +284,10 @@ class A2AServer:
             _server = self._server
             _A2AHandler._server = self  # type: ignore[attr-defined]
             _A2AHandler._message_handler = self._handler  # type: ignore[attr-defined]
+            # Wire the inbound-auth secret for this server. None = legacy
+            # unauthenticated passthrough (a loud warning fires on first call);
+            # non-empty = fail-closed bearer check.
+            _A2AHandler._inbound_secret = self._inbound_secret
 
         actual = self._server.server_address
         logger.info(

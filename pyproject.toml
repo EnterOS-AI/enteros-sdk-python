@@ -27,6 +27,14 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest-asyncio>=0.24"]
+# SSOT contract bindings (molecule-contracts / RFC molecule-core#3285). Used
+# only for type-checking the register/heartbeat/A2A payloads (TYPE_CHECKING
+# import in molecule_external_workspace.client) — NOT a runtime requirement, so
+# it is intentionally kept out of the base dependencies and the `test` extra to
+# keep `pip install` CI green against plain PyPI. Install with the gitea index:
+#   pip install "molecule-ai-sdk[contracts]" \
+#     --extra-index-url https://git.moleculesai.app/api/packages/molecule-ai/pypi/simple/
+contracts = ["molecule-ai-contracts>=0.1.0"]
 
 [project.urls]
 Homepage = "https://git.moleculesai.app/molecule-ai/molecule-sdk-python"
