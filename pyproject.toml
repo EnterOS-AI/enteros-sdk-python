@@ -26,7 +26,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest-asyncio>=0.24"]
+# jsonschema (draft 2020-12 via Draft202012Validator + `referencing`, installed
+# transitively) backs the offline workspace-comms schema-conformance gate
+# (tests/test_workspace_comms_conformance.py), which replaced the old cross-repo
+# AST drift-checker with real-payload-vs-SSOT-schema validation.
+test = ["pytest-asyncio>=0.24", "jsonschema>=4.18"]
 # SSOT contract bindings (molecule-contracts / RFC molecule-core#3285). Used
 # only for type-checking the register/heartbeat/A2A payloads (TYPE_CHECKING
 # import in molecule_external_workspace.client) — NOT a runtime requirement, so
