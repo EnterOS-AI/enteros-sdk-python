@@ -1,4 +1,4 @@
-# CLAUDE.md — molecule-sdk-python
+# CLAUDE.md — molecule-ai-sdk
 
 ## Project overview
 
