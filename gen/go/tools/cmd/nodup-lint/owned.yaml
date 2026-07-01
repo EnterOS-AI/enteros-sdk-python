@@ -1,0 +1,36 @@
+# owned.yaml — the SSOT ban-list for the no-duplication linter.
+#
+# This file is OWNED BY THE SDK and embedded into the nodup-lint binary, so the
+# ban-list itself is never duplicated: adding an entry here automatically
+# tightens the lint in EVERY consumer repo (molecule-core, molecule-controlplane)
+# the next time their CI runs the shared linter. The linter's policy therefore
+# cannot drift between repos.
+#
+# Three layers (see tools/cmd/nodup-lint/main.go):
+#   A) forbidden_paths — SDK-owned file paths that must not reappear in a consumer
+#      (structural re-paste of a whole file/package). EMPTY until the providers
+#      package migrates (today both repos still legitimately own internal/providers).
+#   B) symbols          — SDK-owned identifiers. A consumer const/var that
+#      REDECLARES one with a string LITERAL fails ("you re-pasted the value");
+#      a re-export alias (`const X = llmwire.X`, value is an import selector) PASSES.
+#      A consumer type/func whose name is owned fails outright.
+#   C) fingerprints     — name -> sha256 of an SDK-owned blob. A consumer file
+#      whose bytes match fails (copy detection — the inverse of the retired
+#      "keep your copy byte-equal" gate). EMPTY until providers migrates.
+
+forbidden_paths: []
+
+symbols:
+  # LLM billing-mode wire strings — go.moleculesai.app/sdk/llmwire (billing_mode.go).
+  - LLMBillingModePlatformManaged
+  - LLMBillingModeBYOK
+  - LLMBillingModeDisabled
+  # LLM routing-mode wire tokens — go.moleculesai.app/sdk/llmwire (routing_mode.go).
+  - LLMModePlatform
+  - LLMModeByok
+  - LLMModeFaithful
+
+fingerprints: {}
+
+# Human-facing hint appended to every violation. Tells the offender what to do.
+import_hint: "This identifier is owned by go.moleculesai.app/sdk — import it (e.g. go.moleculesai.app/sdk/llmwire) instead of redeclaring it."
