@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "CANONICAL SSOT for the POST /cp/admin/promote request wire shape.",
+    "Producer = PromoteRequest in molecule-controlplane internal/handlers/admin_promote.go;",
+    "this file lives NEXT TO that struct and promote_request_contract_test.go asserts the struct's",
+    "json tags equal these keys EXACTLY (set-equality). The CP struct is the gated SSOT for the wire shape.",
+    "",
+    "THE CLI (molecule-admin-cli/contract.json) AND MCP (molecule-mcp-admin/contract.json) COPIES MUST",
+    "carry these same 6 fields and their own _comment MUST name THIS file",
+    "(molecule-controlplane/internal/handlers/promote_request.contract.json) as canonical. A one-sided",
+    "change to the CP struct fails this CP test FIRST, before any wrapper drifts silently.",
+    "",
+    "Mirrors the provision_request.contract.json pattern (provision_request_contract_test.go) which guards",
+    "the core -> CP provision request the same way."
+  ],
+  "endpoint": "POST /cp/admin/promote",
+  "fields": {
+    "env":         {"type": "string",        "note": "\"production\" (default) | \"staging\""},
+    "components":  {"type": "[]string",      "note": "component names, or empty / [\"all\"] for the full ordered set"},
+    "target_tag":  {"type": "string",        "note": "staging-<sha> to promote forward; empty resolves per-component from the staging-green marker"},
+    "dry_run":     {"type": "bool",          "note": "true => return the ordered plan, ZERO side effects"},
+    "confirm":     {"type": "bool",          "note": "required for a real full-platform promote (foot-gun guard)"},
+    "rollback_to": {"type": "string",        "note": "optional: re-pin a prior tag/sha instead of promoting forward; when set it is the effective tag"}
+  }
+}

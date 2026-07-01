@@ -1,0 +1,62 @@
+{
+  "name": "Claude Code Agent",
+  "description": "Claude Code workspace template — platform-managed LLM by default (keyless, metered via Molecule's proxy), with BYOK and OAuth model variants.",
+  "version": "1.0.0",
+  "tier": 2,
+  "runtime": "claude-code",
+  "model": "moonshot/kimi-k2.6",
+  "providers": [
+    {
+      "name": "platform",
+      "auth_mode": "third_party_anthropic_compat",
+      "model_prefixes": ["kimi-", "moonshot/", "anthropic/", "minimax/"],
+      "model_aliases": [],
+      "base_url": "https://api.moleculesai.app/api/v1/internal/llm/anthropic/v1",
+      "auth_env": ["ANTHROPIC_API_KEY", "MOLECULE_LLM_USAGE_TOKEN"],
+      "auth_token_env": "ANTHROPIC_API_KEY"
+    },
+    {
+      "name": "anthropic-oauth",
+      "auth_mode": "oauth",
+      "model_prefixes": [],
+      "model_aliases": ["sonnet", "opus", "haiku"],
+      "base_url": null,
+      "auth_env": ["CLAUDE_CODE_OAUTH_TOKEN"]
+    }
+  ],
+  "prompt_files": ["system-prompt.md"],
+  "plugins": [
+    "gitea://molecule-ai/molecule-ai-plugin-molecule-careful-bash#main"
+  ],
+  "skills": ["research"],
+  "schedules": [
+    {
+      "name": "Continuous agent tick",
+      "cron_expr": "*/30 * * * *",
+      "timezone": "America/Vancouver",
+      "prompt": "Run one continuous tick following system-prompt.md."
+    }
+  ],
+  "runtime_config": {
+    "model": "moonshot/kimi-k2.6",
+    "provider": "platform",
+    "providers": ["platform", "minimax", "anthropic-oauth"],
+    "models": [
+      { "id": "moonshot/kimi-k2.6", "name": "Kimi K2.6 (Molecule platform)", "provider": "platform", "required_env": [] },
+      { "id": "anthropic/claude-opus-4-7", "name": "Claude Opus 4.7 (Molecule platform)", "provider": "platform", "required_env": [] },
+      { "id": "sonnet", "name": "Claude Sonnet (OAuth / Claude Code subscription)", "required_env": ["CLAUDE_CODE_OAUTH_TOKEN"] }
+    ],
+    "timeout": 0,
+    "required_env": [],
+    "recommended_env": ["ANTHROPIC_API_KEY"]
+  },
+  "a2a": {
+    "port": 8000,
+    "streaming": true
+  },
+  "env": {
+    "required": [],
+    "optional": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"]
+  },
+  "template_schema_version": 1
+}

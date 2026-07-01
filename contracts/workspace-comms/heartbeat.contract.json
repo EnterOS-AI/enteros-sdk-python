@@ -1,0 +1,30 @@
+{
+  "request": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "error_rate": 0.0,
+    "sample_error": "",
+    "active_tasks": 1,
+    "uptime_seconds": 86400,
+    "current_task": "provisioning a google-adk workspace",
+    "monthly_spend": 1500,
+    "runtime_state": "",
+    "runtime_metadata": {
+      "capabilities": {
+        "heartbeat": true,
+        "scheduler": false,
+        "session": true,
+        "status_mgmt": false
+      },
+      "idle_timeout_seconds": 600
+    },
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+      "mcp__molecule-platform__provision_workspace",
+      "mcp__molecule-platform__list_workspaces"
+    ]
+  },
+  "response": {
+    "status": "ok",
+    "platform_inbound_secret": "pis_8a1c3e5f70b9d2a463f9c1b7a2e4d605"
+  }
+}

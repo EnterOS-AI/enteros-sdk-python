@@ -1,0 +1,195 @@
+# Contracts codegen-drift + validate + parity gate (ONE merged gate over the
+# whole contracts/ SSOT — supersedes cloudproviders-codegen-drift.yml).
+#
+# molecule-ai-sdk is the consolidated home of TWO contract IDL kinds that now
+# share ONE contracts/ + gen/ + tools/:
+#   1. the flat cloud-provider YAML SSOT  (contracts/cloudproviders.yaml, #40)
+#   2. the folded molecule-contracts JSON-Schema contracts (contracts/<domain>/
+#      *.contract.json + *.schema.json — mcp, plugin-manifest, workspace-template,
+#      org-template, catalog, provision-request, promote-request, workspace-comms)
+#
+# The invariant: the committed generated bindings under gen/{go,ts,python} are
+# EXACTLY what tools/gen-*.mjs produce from contracts/ — never hand-edited, never
+# stale — AND every JSON-Schema contract instance validates against its schema.
+# Independent guards, all feeding a strict all-required aggregator:
+#
+#   validate             (python)    check-jsonschema every contracts/<domain>/
+#                        *.contract.json against its sibling *.schema.json (the
+#                        JSON-Schema IDL kind; makes const/enum/required pins
+#                        load-bearing — e.g. required_tool==provision_workspace).
+#   codegen-drift        (node-only) re-run ALL generators (both IDL kinds) and
+#                        fail on any diff in the GENERATED paths (scoped so the
+#                        verbatim-moved llmwire/tools/shim files are never flagged).
+#   contract-conformance (python)    jsonschema-validate the cloudproviders YAML +
+#                        assert the semantic invariants (unique ids/aliases, one
+#                        is_local, default resolves, {persist}∪{""}==migration-056).
+#   go-parity            (go)        build + vet + test gen/go incl. the folded
+#                        molcontracts package, the moved-verbatim cloudprovider
+#                        behavior oracle, llmwire pins, nodup-lint, dependency guard.
+
+name: contracts-codegen-drift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: contracts-codegen-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install check-jsonschema
+        run: pip install --no-cache-dir check-jsonschema
+      - name: Validate every contracts/<domain>/*.contract.json against its sibling schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          contracts=(contracts/*/*.contract.json)
+          if [ ${#contracts[@]} -eq 0 ]; then
+            echo "::error::no contracts/*/*.contract.json instances found — nothing to validate (fail-closed)"
+            exit 1
+          fi
+          rc=0
+          for instance in "${contracts[@]}"; do
+            schema="${instance%.contract.json}.schema.json"
+            if [ ! -f "$schema" ]; then
+              echo "::error file=$instance::missing sibling schema $schema (fail-closed)"
+              rc=1
+              continue
+            fi
+            echo "validating $instance  against  $schema"
+            if ! check-jsonschema --schemafile "$schema" "$instance"; then
+              echo "::error file=$instance::failed schema validation against $schema"
+              rc=1
+            fi
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::one or more contract instances failed schema validation"
+            exit 1
+          fi
+          echo "all contract instances validate against their schemas"
+
+  codegen-drift:
+    name: codegen-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Regenerate Go bindings (cloudprovider + molcontracts) from the SSOT
+        run: node tools/gen-go.mjs
+      - name: Regenerate TypeScript bindings (cloudprovider + contract/comms/catalog)
+        run: node tools/gen-ts.mjs
+      - name: Regenerate Python bindings (cloudprovider + contract/comms/catalog)
+        run: node tools/gen-python.mjs
+      - name: Fail if committed gen/ differs from a fresh regeneration
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Scope to the GENERATED paths only. The hand-authored, NON-generated
+          # files that also live under gen/ are intentionally out of scope here
+          # (the go-parity/build jobs compile/type-check them instead):
+          #   gen/go/{llmwire,tools,doc.go,deps_test.go,go.mod,go.sum} + cloudprovider_test.go
+          #   gen/ts/{index.ts,package.json,tsconfig.json}
+          #   gen/python/{__init__.py,pyproject.toml}
+          if ! git diff --exit-code -- \
+              gen/go/cloudprovider/cloudprovider.go \
+              gen/go/molcontracts \
+              gen/ts/cloudproviders.generated.ts \
+              gen/ts/contract_gen.ts gen/ts/workspace_comms_gen.ts gen/ts/catalog_gen.ts \
+              gen/python/cloudproviders.py \
+              gen/python/contract_gen.py gen/python/workspace_comms_gen.py gen/python/catalog_gen.py; then
+            echo "::error::gen/ is out of date — committed generated bindings differ from a fresh"
+            echo "::error::run of the generators. gen/ is NEVER hand-edited. Regenerate locally with"
+            echo "::error::'node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs'"
+            echo "::error::and commit the result."
+            exit 1
+          fi
+          echo "gen/ is in sync with contracts/ (no drift, both IDL kinds)"
+
+  contract-conformance:
+    name: contract-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install pytest "jsonschema>=4.18" "pyyaml>=6.0"
+      - name: Validate cloudproviders SSOT schema + semantic invariants
+        # --noconftest keeps this job hermetic: it needs only the contract test,
+        # not the package's runtime deps (the repo's main `test` job exercises
+        # the package + conftest fixtures separately).
+        run: python -m pytest tests/test_cloudproviders_contract.py -q --noconftest
+
+  go-parity:
+    name: go-parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: gen/go/go.mod
+          cache: false
+      - name: go mod verify
+        working-directory: gen/go
+        run: go mod verify
+      - name: build (cloudprovider + llmwire + molcontracts + nodup-lint)
+        working-directory: gen/go
+        run: go build ./...
+      - name: vet
+        working-directory: gen/go
+        run: go vet ./...
+      - name: test (parity oracle + llmwire + nodup-lint + molcontracts)
+        working-directory: gen/go
+        run: go test ./...
+      - name: dependency guard (SDK depends on neither consumer)
+        working-directory: gen/go
+        run: go test -run TestNoConsumerDependency -v .
+
+  all-required:
+    name: all-required
+    needs: [validate, codegen-drift, contract-conformance, go-parity]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every required dependency succeeded
+        run: |
+          set -euo pipefail
+          results='${{ toJSON(needs) }}'
+          echo "$results"
+          echo "$results" | python3 -c '
+          import json, sys
+          ns = json.load(sys.stdin)
+          # Strict: every required dependency MUST be "success". A skipped or
+          # cancelled required gate must RED this aggregator, not pass it (an
+          # all-required gate can never treat non-success as acceptable, or the
+          # SSOT invariant it guards is unenforced).
+          bad = [(k, v.get("result")) for k, v in ns.items()
+                 if v.get("result") != "success"]
+          if bad:
+              print("FAIL: jobs not green:", file=sys.stderr)
+              for k, r in bad:
+                  print(f"  - {k}: {r}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: all {len(ns)} required jobs succeeded")
+          '

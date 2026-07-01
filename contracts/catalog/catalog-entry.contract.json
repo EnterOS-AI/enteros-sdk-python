@@ -1,0 +1,30 @@
+{
+  "id": "wt-claude-code",
+  "kind": "workspace-template",
+  "slug": "claude-code-agent",
+  "name": "Claude Code Agent",
+  "description": "Claude Code workspace template — platform-managed LLM by default, with BYOK and OAuth model variants.",
+  "version": "1.0.0",
+  "source": "gitea://molecule-ai/molecule-ai-workspace-template-claude-code#v1.0.0",
+  "publisher": "molecule-ai",
+  "tags": ["claude-code", "agent", "template"],
+  "runtimes": ["claude-code"],
+  "tier": 2,
+  "visibility": "public",
+  "spec": {
+    "runtime": "claude-code",
+    "tier": 2,
+    "models": [
+      { "id": "moonshot/kimi-k2.6", "name": "Kimi K2.6 (Molecule platform)" },
+      { "id": "anthropic/claude-opus-4-7", "name": "Claude Opus 4.7 (Molecule platform)" },
+      { "id": "sonnet", "name": "Claude Sonnet (OAuth / Claude Code subscription)" }
+    ],
+    "plugins": [
+      "gitea://molecule-ai/molecule-ai-plugin-molecule-careful-bash#main"
+    ],
+    "env": {
+      "required": [],
+      "optional": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"]
+    }
+  }
+}

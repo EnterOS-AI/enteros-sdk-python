@@ -1,0 +1,22 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "concierge-warmup-0b8f2c4a-7d2e9f01-3a4b-4c5d-8e6f-1a2b3c4d5e6f",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "role": "user",
+        "messageId": "concierge-warmup-0b8f2c4a-7d2e9f01-3a4b-4c5d-8e6f-1a2b3c4d5e6f",
+        "parts": [
+          { "kind": "text", "text": "Platform readiness check — no action needed." }
+        ],
+        "metadata": { "concierge_warmup": true }
+      }
+    }
+  },
+  "response": {
+    "status": "queued",
+    "delivery_mode": "push-async",
+    "method": "message/send"
+  }
+}

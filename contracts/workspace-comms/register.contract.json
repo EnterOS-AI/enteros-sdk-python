@@ -1,0 +1,20 @@
+{
+  "request": {
+    "id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "url": "https://e2e-demo.moleculesai.app/workspaces/0b8f2c4a/a2a",
+    "agent_card": {
+      "name": "Org Concierge",
+      "description": "Org-level platform agent (concierge).",
+      "url": "https://e2e-demo.moleculesai.app/workspaces/0b8f2c4a/a2a"
+    },
+    "delivery_mode": "push",
+    "kind": "platform",
+    "mcp_server_present": true
+  },
+  "response": {
+    "status": "registered",
+    "delivery_mode": "push",
+    "auth_token": "wsk_live_3f9c1b7a2e4d6058a1c3e5f70b9d2a46",
+    "platform_inbound_secret": "pis_8a1c3e5f70b9d2a463f9c1b7a2e4d605"
+  }
+}

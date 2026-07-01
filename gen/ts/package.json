@@ -1,0 +1,45 @@
+{
+  "name": "@molecule-ai/contracts",
+  "version": "0.2.0",
+  "description": "Generated TypeScript bindings for the molecule-ai contract SSOT (folded from molecule-contracts into molecule-ai-sdk / RFC molecule-core#3285). MCP plugin-delivery scalars + workspace-comms message types. Distinct dist from molecule-ai-sdk's own JS surface.",
+  "license": "UNLICENSED",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk.git",
+    "directory": "gen/ts"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./contract": {
+      "types": "./dist/contract_gen.d.ts",
+      "default": "./dist/contract_gen.js"
+    },
+    "./workspace-comms": {
+      "types": "./dist/workspace_comms_gen.d.ts",
+      "default": "./dist/workspace_comms_gen.js"
+    }
+  },
+  "files": [
+    "dist",
+    "index.ts",
+    "contract_gen.ts",
+    "workspace_comms_gen.ts",
+    "catalog_gen.ts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "publishConfig": {
+    "registry": "https://git.moleculesai.app/api/packages/molecule-ai/npm/"
+  }
+}
