@@ -5,7 +5,7 @@
   "description": "SSOT JSON-Schema (draft 2020-12) for contracts/cloudproviders.yaml — the single source of truth for the set of CLOUD/COMPUTE backends a tenant/workspace runs on (Molecules-Server/local, AWS, GCP, Hetzner). Distinct from the LLM provider registry. The Node generators under tools/ emit gen/{go,ts,python} from the validated instance. INVARIANT surfaced by tests/test_cloudproviders_contract.py: {every provider.persist} ∪ {\"\"} equals the migration-056 organizations.provider CHECK set ('', 'aws', 'hetzner', 'gcp', 'local'), and backend_key == persist for every current row.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "default_id", "providers"],
+  "required": ["version", "default_id", "empty_normalizes_to", "providers"],
   "properties": {
     "version": {
       "type": "integer",

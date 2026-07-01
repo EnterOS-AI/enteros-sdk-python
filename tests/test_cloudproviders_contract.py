@@ -102,10 +102,12 @@ def test_default_id_resolves() -> None:
     data = _load_data()
     ids = {p["id"] for p in data["providers"]}
     assert data["default_id"] in ids, f"default_id {data['default_id']!r} is not a real id"
-    if "empty_normalizes_to" in data:
-        assert data["empty_normalizes_to"] == data["default_id"], (
-            "empty_normalizes_to must equal default_id"
-        )
+    # empty_normalizes_to is a REQUIRED field (schema + this gate): assert it
+    # UNCONDITIONALLY so a stripped/forked SSOT that drops it reds here, not
+    # only when it happens to be present.
+    assert data["empty_normalizes_to"] == data["default_id"], (
+        "empty_normalizes_to must equal default_id"
+    )
 
 
 def test_backend_key_equals_persist_for_every_row() -> None:
@@ -146,6 +148,17 @@ def test_gate_rejects_missing_required_field() -> None:
     validator = Draft202012Validator(schema)
     assert list(validator.iter_errors(bad)), (
         "schema failed to reject a provider missing a required field"
+    )
+
+
+def test_gate_rejects_missing_empty_normalizes_to() -> None:
+    """empty_normalizes_to is a REQUIRED top-level field: dropping it must red."""
+    schema = _load_schema()
+    bad = _load_data()
+    del bad["empty_normalizes_to"]  # required at the top level
+    validator = Draft202012Validator(schema)
+    assert list(validator.iter_errors(bad)), (
+        "schema failed to reject an instance missing empty_normalizes_to"
     )
 
 
