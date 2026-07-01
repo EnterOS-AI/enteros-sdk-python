@@ -1,0 +1,82 @@
+# mirror-sdk-go.yml — publish gen/go as the ROOT module of the dist repo.
+#
+# go.moleculesai.app/sdk is the vanity import path for the SHARED Go SSOT module
+# (cloudprovider + llmwire + molcontracts + tools/cmd/nodup-lint). `go get` needs
+# a repository whose ROOT holds the go.mod that declares
+# `module go.moleculesai.app/sdk` — but in THIS monorepo that module lives under
+# gen/go/. This workflow republishes gen/go's CONTENTS to the ROOT of the
+# distribution repo molecule-ai/molecule-ai-sdk-go on every push to main, so the
+# operator's /sdk vanity Worker can point at a correctly root-bound repo.
+#
+# Mechanism: `git subtree split -P gen/go` rewrites history so gen/go is the tree
+# root, then force-push that to the dist repo's main. gen/ is GENERATED from
+# contracts/ (never hand-edited) and the dist repo is a pure mirror with no
+# independent commits, so the force-push can lose nothing.
+#
+# The push credential is the repo Actions secret SDK_GO_MIRROR_TOKEN (write
+# access to molecule-ai-sdk-go); it is injected only into the remote URL and is
+# never printed. This workflow does NOT touch the /sdk vanity Worker — that is
+# the operator's edge-side flip.
+
+name: mirror-sdk-go
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: mirror-sdk-go
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: mirror
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history (git subtree split needs it)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Split gen/go and force-push its contents to the dist repo root
+        env:
+          MIRROR_TOKEN: ${{ secrets.SDK_GO_MIRROR_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MIRROR_TOKEN:-}" ]; then
+            echo "::error::SDK_GO_MIRROR_TOKEN is not set — cannot push to the dist repo"
+            exit 1
+          fi
+          if ! git subtree --help >/dev/null 2>&1; then
+            echo "::error::git subtree is unavailable on this runner"
+            exit 1
+          fi
+
+          git config user.name  "mol-sdk-mirror[bot]"
+          git config user.email "mol-sdk-mirror@moleculesai.app"
+
+          # Rewrite history so gen/go is the tree root. HEAD is the just-pushed
+          # main commit.
+          split_sha="$(git subtree split -P gen/go HEAD)"
+          if [ -z "${split_sha}" ]; then
+            echo "::error::git subtree split produced no commit (is gen/go missing?)"
+            exit 1
+          fi
+          echo "subtree split -> ${split_sha}"
+
+          # Build the authenticated push URL from the instance server URL
+          # (scheme + host from github.server_url). The token is injected here and
+          # never echoed; `set -x` is deliberately NOT enabled.
+          scheme="${SERVER_URL%%://*}"
+          host="${SERVER_URL#*://}"
+          dist="${scheme}://mol-sdk-mirror:${MIRROR_TOKEN}@${host}/molecule-ai/molecule-ai-sdk-go.git"
+
+          # Force-push the split contents to the dist repo's main. The dist repo
+          # is a pure mirror (no independent commits), so force is safe.
+          git push --force "${dist}" "${split_sha}:refs/heads/main"
+          echo "mirrored gen/go -> molecule-ai/molecule-ai-sdk-go (main = ${split_sha})"
