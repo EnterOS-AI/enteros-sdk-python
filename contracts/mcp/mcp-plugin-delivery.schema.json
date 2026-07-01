@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/mcp/mcp-plugin-delivery.schema.json",
+  "title": "MCP Plugin-Delivery Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the Molecule concierge management-MCP plugin-delivery contract. Relocated from molecule-core (contracts/mcp-plugin-delivery.contract.json) per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen Architecture). This schema describes the shape of the canonical contract instance (mcp-plugin-delivery.contract.json), which records how the management-mode MCP server descriptor (`mcp_server_name`) is delivered into each runtime's native settings, and the SINGULAR `required_tool` verb the concierge degrade gate enforces. INVARIANT: `required_tool` MUST remain exactly `provision_workspace` and MUST NEVER be renamed (e.g. to `create_workspace`) — renaming verbs is the #3082 phantom-verb regression class explicitly flagged by RFC §15. The Go degrade gate (`platform_agent.go`, `conciergePlatformMCPRequiredTool`, test `TestSSOT_DegradeGateToolDerivesFromContract`) derives its required tool from this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "settings_path",
+    "key",
+    "entry_shape",
+    "mcp_server_name",
+    "required_tool",
+    "loaded_mcp_tools_field",
+    "legacy_binary_path",
+    "runtime_present_field",
+    "producer",
+    "consumer",
+    "consumers",
+    "descriptor",
+    "port",
+    "runtimes"
+  ],
+  "properties": {
+    "settings_path": {
+      "type": "string",
+      "description": "Default (claude_code) settings file path the rendered MCP descriptor is written to, e.g. /configs/.claude/settings.json. Per-runtime paths live under `runtimes`."
+    },
+    "key": {
+      "type": "string",
+      "description": "Top-level key inside the settings file under which MCP servers are declared (e.g. mcpServers)."
+    },
+    "entry_shape": {
+      "type": "string",
+      "description": "Human-readable shorthand for the descriptor entry shape, e.g. name->{command,args?,env?}."
+    },
+    "mcp_server_name": {
+      "type": "string",
+      "description": "Logical name of the management-mode MCP server descriptor (e.g. molecule-platform)."
+    },
+    "required_tool": {
+      "type": "string",
+      "const": "provision_workspace",
+      "description": "INVARIANT — the singular tool verb the concierge management MCP must expose; the degrade gate fails closed if it is absent on the live surface. Pinned via `const` to `provision_workspace`; MUST NEVER be renamed (the #3082 phantom-verb regression class). The Go side derives the degrade-gate required tool from this field."
+    },
+    "loaded_mcp_tools_field": {
+      "type": "string",
+      "description": "Name of the field reporting the set of tools actually loaded from the MCP server (e.g. loaded_mcp_tools)."
+    },
+    "legacy_binary_path": {
+      "type": "string",
+      "description": "Filesystem path of the legacy MCP server binary that older presence probes checked (e.g. /opt/molecule-mcp-server)."
+    },
+    "runtime_present_field": {
+      "type": "string",
+      "description": "Name of the runtime-reported boolean field indicating the MCP server is present (e.g. mcp_server_present)."
+    },
+    "producer": {
+      "type": "string",
+      "description": "Identifier of the producer/adapter that emits the descriptor (e.g. MCPServerAdaptor)."
+    },
+    "consumer": {
+      "type": "string",
+      "description": "Primary consumer that reads the rendered descriptor (e.g. claude_sdk_executor._load_settings_mcp)."
+    },
+    "consumers": {
+      "type": "array",
+      "description": "Full list of consumers that read/derive from this contract or the rendered descriptor.",
+      "items": { "type": "string" }
+    },
+    "descriptor": {
+      "type": "string",
+      "description": "Prose description of the runtime-agnostic descriptor and the MCP-wiring PORT that renders it into native runtime config."
+    },
+    "port": {
+      "type": "object",
+      "description": "The MCP-wiring PORT: the hook/implementation/probe/dispatch surface that renders the descriptor into the active runtime's native config.",
+      "additionalProperties": false,
+      "required": ["hook", "impl", "present_probe", "dispatch", "resolver_default"],
+      "properties": {
+        "hook": {
+          "type": "string",
+          "description": "Hook entry point that registers the MCP server (e.g. InstallContext.register_mcp_server)."
+        },
+        "impl": {
+          "type": "string",
+          "description": "Default implementation of the registration hook (e.g. BaseAdapter.register_mcp_server_hook)."
+        },
+        "present_probe": {
+          "type": "string",
+          "description": "Probe that reports whether the management MCP is present (e.g. BaseAdapter.management_mcp_present)."
+        },
+        "dispatch": {
+          "type": "string",
+          "description": "How the default hook dispatches per runtime."
+        },
+        "resolver_default": {
+          "type": "string",
+          "description": "Plugin-registry resolver default that maps an mcpServers-shaped plugin to the MCP server adaptor for any runtime."
+        }
+      }
+    },
+    "runtimes": {
+      "type": "object",
+      "description": "Per-runtime rendering targets (settings path, format, renderer, status) for the descriptor. Keys are runtime identifiers (e.g. claude_code, codex, gemini_cli, hermes).",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "description": "Rendering target for a single runtime.",
+        "additionalProperties": false,
+        "required": ["settings_path", "format", "renderer", "status"],
+        "properties": {
+          "settings_path": {
+            "type": "string",
+            "description": "Path of the runtime's native settings/config file (may be `unverified` for not-yet-verified runtimes)."
+          },
+          "format": {
+            "type": "string",
+            "description": "Serialization format of the settings file, e.g. json or toml (may be `unverified`)."
+          },
+          "key": {
+            "type": "string",
+            "description": "Top-level key under which MCP servers are declared, for JSON-keyed runtimes (e.g. mcpServers). Mutually-typical with `table`."
+          },
+          "table": {
+            "type": "string",
+            "description": "TOML table under which MCP servers are declared, for TOML-table runtimes (e.g. mcp_servers). Mutually-typical with `key`."
+          },
+          "renderer": {
+            "type": "string",
+            "description": "Renderer function that emits this runtime's native config (e.g. mcp_render.render_claude_settings)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Implementation status of this runtime's renderer (e.g. implemented, todo-unverified)."
+          }
+        }
+      }
+    }
+  }
+}

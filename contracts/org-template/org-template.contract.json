@@ -1,0 +1,61 @@
+{
+  "name": "Gemini Growth Team",
+  "description": "Gemini-on-ADK marketing team — a Marketing Lead coordinates four Gemini specialists over A2A. Inline composition style.",
+  "defaults": {
+    "runtime": "google-adk",
+    "tier": 2,
+    "model": "vertex:gemini-2.5-pro",
+    "required_env": ["GOOGLE_CLOUD_PROJECT"],
+    "plugins": ["molecule-careful-bash"],
+    "idle_prompt": "",
+    "idle_interval_seconds": 600
+  },
+  "workspaces": [
+    {
+      "name": "Marketing Lead",
+      "role": "Marketing coordinator. Decomposes the user's goal and delegates to specialists over A2A; synthesizes their results.",
+      "tier": 2,
+      "files_dir": "marketing-lead",
+      "canvas": { "x": 400, "y": 60 },
+      "plugins": [],
+      "channels": [
+        {
+          "type": "discord",
+          "config": { "webhook_url": "${DISCORD_WEBHOOK_URL}" },
+          "enabled": true
+        }
+      ],
+      "schedules": [
+        {
+          "name": "Hourly unanswered sweep",
+          "cron_expr": "12 * * * *",
+          "enabled": true,
+          "prompt_file": "schedules/hourly-unanswered-sweep.md"
+        }
+      ],
+      "initial_prompt_file": "initial-prompt.md",
+      "idle_prompt_file": "idle-prompt.md",
+      "children": [
+        {
+          "name": "Trend Researcher",
+          "role": "Surfaces relevant topics, competitor moves, and rising search/social trends.",
+          "files_dir": "trend-researcher",
+          "canvas": { "x": 120, "y": 280 }
+        },
+        {
+          "name": "SEO/GEO Agent",
+          "role": "Search-engine and generative-engine optimization.",
+          "files_dir": "seo-geo-agent",
+          "canvas": { "x": 320, "y": 280 }
+        },
+        {
+          "name": "Content Writer",
+          "role": "Turns the brief into on-brand pages, posts, and copy.",
+          "files_dir": "content-writer",
+          "canvas": { "x": 520, "y": 280 }
+        }
+      ]
+    }
+  ],
+  "template_schema_version": 1
+}

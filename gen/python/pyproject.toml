@@ -1,0 +1,46 @@
+# pyproject.toml — packages the generated Python bindings under gen/python as the
+# installable distribution `molecule-ai-contracts` (import name: molecule_ai_contracts).
+#
+# This is the FOLDED home of the former molecule-contracts Python package. It is
+# a SEPARATE publishable dist from the repo-root `molecule-ai-sdk` package
+# (molecule_plugin / molecule_external_workspace) — the dist name
+# `molecule-ai-contracts` and import name `molecule_ai_contracts` are kept
+# byte-stable so Python consumers (molecule-ai-workspace-runtime, the SDK's own
+# molecule_external_workspace type-check import) need NO source change; only the
+# publish source moved into molecule-ai-sdk.
+#
+# The generators (tools/gen-python.mjs) write ONLY the *_gen.py files here; this
+# manifest and the package shim __init__.py are hand-written and outside the
+# generators' write paths, so a fresh regen never clobbers them and the
+# codegen-drift gate (`git diff --exit-code -- gen/`) stays green.
+#
+#   from molecule_ai_contracts import REQUIRED_TOOL, RegisterRequest
+#   from molecule_ai_contracts.contract_gen import MCP_SERVER_NAME
+#   from molecule_ai_contracts.workspace_comms_gen import HeartbeatRequest
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molecule-ai-contracts"
+version = "0.2.0"
+description = "Generated Python bindings for the molecule-ai contract SSOT (folded from molecule-contracts into molecule-ai-sdk / RFC molecule-core#3285): MCP plugin-delivery scalars + workspace-comms message TypedDicts."
+requires-python = ">=3.8"
+license = { text = "UNLICENSED" }
+keywords = ["molecule-ai", "contracts", "ssot", "codegen", "workspace-comms"]
+
+dependencies = [
+  # NotRequired is stdlib on 3.11+; the generated modules fall back to
+  # typing_extensions on older interpreters.
+  "typing_extensions>=4.0; python_version < '3.11'",
+]
+
+[project.urls]
+Repository = "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk"
+
+[tool.setuptools]
+packages = ["molecule_ai_contracts"]
+
+[tool.setuptools.package-dir]
+molecule_ai_contracts = "."

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/raw/branch/main/promote-request/promote-request.schema.json",
+  "title": "promote-request wire contract",
+  "description": "Shape of the molecule-controlplane POST /cp/admin/promote request wire contract descriptor. CP's PromoteRequest struct (admin_promote.go) is the PRODUCING SSOT for the wire shape; promote_request_contract_test.go asserts the struct's json tags equal these `fields` keys (set-equality). The molecule-admin-cli and molecule-mcp-admin wrapper copies mirror these same six fields. This is the JSON-Schema (draft 2020-12) IDL per RFC molecule-core#3285 §15; the instance is the canonical data the schema validates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpoint", "fields"],
+  "properties": {
+    "_comment": {
+      "description": "Free-form documentation block (array of prose lines). Not machine-validated.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "endpoint": {
+      "type": "string",
+      "const": "POST /cp/admin/promote",
+      "description": "The control-plane endpoint this request shape targets. Pinned (const) -- the wire contract is endpoint-specific; retargeting it is a deliberate, reviewable edit."
+    },
+    "fields": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Every wire field of the promote request, keyed by its EXACT JSON tag. promote_request_contract_test.go asserts CP's PromoteRequest json tags against these keys (set-equality).",
+      "required": [
+        "env",
+        "components",
+        "target_tag",
+        "dry_run",
+        "confirm",
+        "rollback_to"
+      ],
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["string", "[]string", "bool"],
+            "description": "Scalar/shape kind of the wire field (Go-side: string, a []string slice, bool)."
+          },
+          "note": {
+            "type": "string",
+            "description": "Documentation / semantics for the field (allowed values, defaults, foot-gun guards)."
+          }
+        }
+      }
+    }
+  }
+}

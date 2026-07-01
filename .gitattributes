@@ -1,9 +1,11 @@
-# Cloud-provider SSOT + codegen: pin LF so the GENERATED Go/TS/Python blobs stay
+# Contracts SSOT + codegen: pin LF so the GENERATED Go/TS/Python blobs stay
 # byte-identical on every platform and the codegen-drift gate is deterministic
 # regardless of a developer's core.autocrlf. The generators (tools/*.mjs) always
 # emit LF; these attributes make the committed blobs and checkouts match that.
+# Covers BOTH IDL kinds now co-located under contracts/: the cloudproviders YAML
+# and the folded molecule-contracts JSON-Schema contracts + their gen/ bindings.
 contracts/** text eol=lf
 gen/** text eol=lf
 tools/** text eol=lf
 tests/test_cloudproviders_contract.py text eol=lf
-.gitea/workflows/cloudproviders-codegen-drift.yml text eol=lf
+.gitea/workflows/contracts-codegen-drift.yml text eol=lf

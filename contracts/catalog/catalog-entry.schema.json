@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/catalog-entry.schema.json",
+  "title": "Marketplace Catalog-Entry Envelope Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the unified Molecule marketplace catalog entry — the single envelope that lists ANY of the three artifact kinds (plugin / workspace-template / org-template) in the catalog, per RFC molecule-core#3285 (Phase 1, schema-only). The common envelope fields (id/kind/slug/name/version/source/publisher/tags/runtimes/tier/visibility) describe the listing; the per-kind `spec` is selected by a `oneOf` KEYED ON `kind` (kind:plugin -> pluginSpec; kind:workspace-template -> workspaceTemplateSpec; kind:org-template -> orgTemplateSpec). Because `kind` is pinned with a `const` in each oneOf branch, exactly one branch ever matches — the discriminator is unambiguous. The full artifact manifests live in the sibling contracts (plugin-manifest/, workspace-template/, org-template/); the catalog `spec` carries the listing-relevant projection of each (not the whole manifest). NOTE (Phase boundary): PRICE and ENTITLEMENT are deliberately NOT in this envelope — they are a catalog-layer concern (Phase 2), kept out of the schema-only artifact contract. `source` is a PINNED gitea source-contract string (`gitea://<owner>/<repo>[/<subpath>]#<ref>`) so a catalog entry always resolves to an immutable ref.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "name", "version", "source", "spec"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1, "description": "Stable catalog entry id (opaque; unique across the catalog)." },
+    "kind": { "$ref": "#/$defs/kind", "description": "Artifact kind discriminator. Drives the `oneOf` spec selection." },
+    "slug": { "type": "string", "description": "URL-safe slug for the listing (derived from the artifact name)." },
+    "name": { "type": "string", "minLength": 1, "description": "Display name of the listed artifact." },
+    "description": { "type": "string", "description": "Optional marketplace description." },
+    "version": { "type": "string", "minLength": 1, "description": "Listed artifact version (e.g. `1.6.1`, `1.0.0`)." },
+    "source": {
+      "type": "string",
+      "pattern": "^gitea://",
+      "description": "Pinned gitea source-contract string `gitea://<owner>/<repo>[/<subpath>]#<ref>` resolving to the immutable artifact ref."
+    },
+    "publisher": { "type": "string", "description": "Publisher/namespace (e.g. `molecule-ai`)." },
+    "tags": {
+      "type": "array",
+      "description": "Marketplace tags/keywords.",
+      "items": { "type": "string", "description": "A single tag." }
+    },
+    "runtimes": {
+      "type": "array",
+      "description": "Runtimes the artifact supports/targets (canonical hyphen form; underscore aliases accepted). For org-template this is the union across its workspaces.",
+      "items": { "$ref": "#/$defs/runtimeId" }
+    },
+    "tier": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Capability/cost tier 1-4 (for templates; absent for plugins)." },
+    "visibility": { "$ref": "#/$defs/visibility", "description": "Listing visibility." },
+    "spec": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Per-kind listing spec. Its shape is selected by the `oneOf` below keyed on `kind`. Modelled as an open object here; the oneOf tightens it to the matching per-kind spec."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "plugin entry",
+      "description": "kind=plugin -> spec is a pluginSpec.",
+      "properties": {
+        "kind": { "const": "plugin" },
+        "spec": { "$ref": "#/$defs/pluginSpec" }
+      }
+    },
+    {
+      "title": "workspace-template entry",
+      "description": "kind=workspace-template -> spec is a workspaceTemplateSpec.",
+      "properties": {
+        "kind": { "const": "workspace-template" },
+        "spec": { "$ref": "#/$defs/workspaceTemplateSpec" }
+      }
+    },
+    {
+      "title": "org-template entry",
+      "description": "kind=org-template -> spec is an orgTemplateSpec.",
+      "properties": {
+        "kind": { "const": "org-template" },
+        "spec": { "$ref": "#/$defs/orgTemplateSpec" }
+      }
+    }
+  ],
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind.",
+      "enum": ["plugin", "workspace-template", "org-template"]
+    },
+    "visibility": {
+      "type": "string",
+      "description": "Catalog visibility.",
+      "enum": ["public", "unlisted", "private"]
+    },
+    "runtimeId": {
+      "type": "string",
+      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as plugin-manifest.schema.json; underscore aliases accepted.",
+      "enum": [
+        "claude-code",
+        "codex",
+        "hermes",
+        "openclaw",
+        "langgraph",
+        "autogen",
+        "crewai",
+        "deepagents",
+        "gemini-cli",
+        "google-adk",
+        "external",
+        "claude_code",
+        "gemini_cli"
+      ]
+    },
+    "pluginSpec": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Listing projection of a plugin manifest. Carries the marketplace-relevant subset: contributes summary, privilege, and the secrets the plugin requires.",
+      "properties": {
+        "contributes": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Open summary of the plugin's contribution points (see plugin-manifest/plugin-manifest.schema.json for the full shape). Open so future contribution points list without a schema change."
+        },
+        "privileged": { "type": "boolean", "description": "Whether the plugin requires org-admin/management privilege." },
+        "requires_secrets": {
+          "type": "array",
+          "description": "Secrets/env the plugin needs to function (surfaced to the installer).",
+          "items": { "type": "string", "description": "A required secret/env var name." }
+        }
+      }
+    },
+    "workspaceTemplateSpec": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Listing projection of a workspace template. Carries runtime/tier/models/plugins/env relevant to the listing.",
+      "properties": {
+        "runtime": { "$ref": "#/$defs/runtimeId", "description": "Template runtime." },
+        "tier": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Template tier 1-4." },
+        "models": {
+          "type": "array",
+          "description": "Servable model summary for the listing.",
+          "items": { "$ref": "#/$defs/catalogModel" }
+        },
+        "plugins": {
+          "type": "array",
+          "description": "Plugin source-contract strings the template declares.",
+          "items": { "type": "string", "description": "A plugin source-contract string." }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Required/optional env summary.",
+          "properties": {
+            "required": {
+              "type": "array",
+              "description": "Required env vars.",
+              "items": { "type": "string", "description": "A required env var name." }
+            },
+            "optional": {
+              "type": "array",
+              "description": "Optional env vars.",
+              "items": { "type": "string", "description": "An optional env var name." }
+            }
+          }
+        }
+      }
+    },
+    "orgTemplateSpec": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Listing projection of an org template. Carries topology/size/defaults/composition for the listing.",
+      "properties": {
+        "topology": { "type": "string", "description": "Free-text topology summary (e.g. `CEO + VPs + Managers + ICs`)." },
+        "workspace_count": { "type": "integer", "minimum": 0, "description": "Total workspace count (sum over the resolved node tree)." },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Org-wide defaults summary (open object)."
+        },
+        "composition": { "$ref": "#/$defs/composition", "description": "Composition style: inline list, name->node map, or folder-tree (`!include`/`!external`)." }
+      }
+    },
+    "catalogModel": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "description": "A model summary entry for a workspace-template listing.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Model id." },
+        "name": { "type": "string", "description": "Human-readable model name." }
+      }
+    },
+    "composition": {
+      "type": "string",
+      "description": "Org-template composition style.",
+      "enum": ["inline", "map", "folder-tree"]
+    }
+  }
+}

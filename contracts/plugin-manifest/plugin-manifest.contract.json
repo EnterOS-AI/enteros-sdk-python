@@ -1,0 +1,40 @@
+{
+  "name": "molecule-platform",
+  "version": "1.6.1",
+  "description": "Org-admin management MCP — exposes provision_workspace and the rest of the concierge management surface. Privileged: only the org concierge (kind=platform) loads it. Delivered as an mcpServers-shaped plugin resolved to the MCP server adaptor on any runtime (see mcp/mcp-plugin-delivery.contract.json).",
+  "publisher": "molecule-ai",
+  "author": "Molecule AI",
+  "tags": ["molecule", "mcp", "management", "concierge", "privileged"],
+  "kind": "mcp-server",
+  "engines": {
+    "molecule": "^1.0"
+  },
+  "runtimes": ["claude-code", "codex", "gemini-cli", "hermes"],
+  "privileged": true,
+  "sha256": "3f9c1b7a2e4d6058a1c3e5f70b9d2a463f9c1b7a2e4d6058a1c3e5f70b9d2a46",
+  "contributes": {
+    "mcpServers": [
+      {
+        "name": "molecule-platform",
+        "command": "npx",
+        "args": ["@molecule-ai/mcp-server"],
+        "env": {
+          "MOLECULE_MGMT_MODE": "management"
+        },
+        "privileged": true
+      }
+    ],
+    "commands": [
+      {
+        "name": "/provision",
+        "description": "Provision a new workspace under this org (wraps the provision_workspace MCP tool)."
+      }
+    ],
+    "tabs": [
+      {
+        "id": "org-roster",
+        "title": "Org Roster"
+      }
+    ]
+  }
+}
