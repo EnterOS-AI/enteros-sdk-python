@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/contracts/cloudproviders.schema.json",
+  "title": "MoleculesAI Cloud/Compute Provider SSOT",
+  "description": "SSOT JSON-Schema (draft 2020-12) for contracts/cloudproviders.yaml — the single source of truth for the set of CLOUD/COMPUTE backends a tenant/workspace runs on (Molecules-Server/local, AWS, GCP, Hetzner). Distinct from the LLM provider registry. The Node generators under tools/ emit gen/{go,ts,python} from the validated instance. INVARIANT surfaced by tests/test_cloudproviders_contract.py: {every provider.persist} ∪ {\"\"} equals the migration-056 organizations.provider CHECK set ('', 'aws', 'hetzner', 'gcp', 'local'), and backend_key == persist for every current row.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "default_id", "providers"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema/data revision of this contract instance."
+    },
+    "default_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "The implicit provider id when a request omits one (an empty/blank provider Normalizes to this). Must reference a real provider id."
+    },
+    "empty_normalizes_to": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "The id an empty/blank request value resolves to. Equals default_id; called out so the resolution rule is data, not code."
+    },
+    "providers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The canonical, ORDERED provider list (display/selection order: clouds first, then the local self-hosted box). Order is byte-significant — it drives the Go All slice, CloudIDs() order, and the app dropdown order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "display", "backend_key", "persist", "is_local"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Canonical wire/UI id persisted on an org/workspace row and sent in the create/migrate API."
+          },
+          "display": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Human display label for pickers."
+          },
+          "backend_key": {
+            "type": "string",
+            "enum": ["local", "aws", "gcp", "hetzner"],
+            "description": "Provisioner registry key the id routes to. Clouds == id; the local box routes to the historical 'local' (LocalDocker) key."
+          },
+          "persist": {
+            "type": "string",
+            "enum": ["aws", "gcp", "hetzner", "local"],
+            "description": "Value the organizations.provider column stores. Constrained by migration 056: clouds persist their id, the local box persists 'local'."
+          },
+          "is_local": {
+            "type": "boolean",
+            "description": "True only for the self-hosted Molecules-Server box."
+          },
+          "aliases": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "description": "Alternate accepted wire spellings that Normalize to id (e.g. 'local'/'docker' → 'molecules-server')."
+          }
+        }
+      }
+    }
+  }
+}

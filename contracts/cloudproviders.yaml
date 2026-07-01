@@ -1,0 +1,77 @@
+# cloudproviders.yaml — the SINGLE SOURCE OF TRUTH (SSOT) for the set of
+# CLOUD / COMPUTE BACKENDS a MoleculesAI tenant or workspace can run on: the
+# "where does this box physically run" axis — the local self-hosted box
+# (Molecules-Server) and the three clouds (AWS / GCP / Hetzner).
+#
+# This is DELIBERATELY DISTINCT from the LLM provider registry
+# (Anthropic/OpenAI/MiniMax/…). Nothing here mentions a model; it carries only
+# the compute-backend identity. Conflating the two is the long-standing
+# confusion this SSOT exists to end.
+#
+# HOW IT IS USED
+#   The Node generators under tools/ (gen-go.mjs / gen-ts.mjs / gen-python.mjs)
+#   read THIS file and emit the byte-stable bindings under gen/:
+#     - gen/go/cloudprovider/cloudprovider.go   (Go enum + helpers; the SSOT the
+#                                                CP + core consumers re-export)
+#     - gen/ts/cloudproviders.generated.ts      (the app dropdown catalog)
+#     - gen/python/cloudproviders.py            (Python constants + PROVIDERS)
+#   A CI drift gate re-runs the generators and fails if the committed gen/
+#   differs — so gen/ is NEVER hand-edited, and editing this ONE file is the
+#   only edit that changes the provider set everywhere.
+#
+# FIELD MEANINGS (per provider)
+#   id          canonical wire/UI value persisted on an org/workspace row and
+#               sent in the create/migrate API. The SSOT spelling.
+#   display     human label for pickers ("Molecules-Server", "AWS", …).
+#   backend_key provisioner registry key the id routes to (CP
+#               provisioner.NewProviderRegistry / Select). For the clouds this
+#               EQUALS the id; for the local box "molecules-server" routes to the
+#               historical LocalDocker key "local".
+#   persist     the value the organizations.provider column actually stores.
+#               Clouds persist their id; the local box persists "local" (NOT the
+#               canonical id) — see migration 056 CHECK
+#               (molecule-controlplane/migrations/056_org_provider_local.up.sql):
+#               CHECK (provider IN ('', 'aws', 'hetzner', 'gcp', 'local')).
+#               INVARIANT: {every persist} ∪ {""} == that CHECK set exactly, and
+#               backend_key == persist for every current row.
+#   is_local    true only for the self-hosted Molecules-Server box.
+#   aliases     alternate accepted wire spellings that Normalize to id
+#               (e.g. "local" / "docker" → "molecules-server").
+#
+# ORDER = display / selection order (the app dropdown + Go All order): the
+# clouds first (AWS the historical default), then the local self-hosted box.
+version: 1
+
+# The implicit provider when a create/migrate request omits one: an empty/blank
+# provider string Normalizes to this id (the historical pre-multi-provider
+# contract that an absent provider means AWS).
+default_id: aws
+# The id an empty/blank request value resolves to (== default_id; called out
+# explicitly so the resolution rule is data, not code).
+empty_normalizes_to: aws
+
+providers:
+  - id: aws
+    display: AWS
+    backend_key: aws
+    persist: aws
+    is_local: false
+    aliases: []
+  - id: gcp
+    display: GCP
+    backend_key: gcp
+    persist: gcp
+    is_local: false
+    aliases: []
+  - id: hetzner
+    display: Hetzner
+    backend_key: hetzner
+    persist: hetzner
+    is_local: false
+    aliases: []
+  - id: molecules-server
+    display: Molecules-Server
+    backend_key: local
+    persist: local
+    is_local: true
+    aliases: [local, docker]
