@@ -82,5 +82,6 @@ no source change — distinct from `molecule-ai-sdk`'s own JS/Py surface:
   `./workspace-comms`.
 - Python: `molecule-ai-contracts` / import name `molecule_ai_contracts`
   (`gen/python/pyproject.toml`).
-- Go: `go.moleculesai.app/sdk/molcontracts` (the folded package, additive to the
-  single `go.moleculesai.app/sdk` module).
+- Go: `go.moleculesai.app/sdk/gen/go/molcontracts` (the folded package, additive
+  to the single `go.moleculesai.app/sdk/gen/go` module — a subdir module of the
+  molecule-ai-sdk repo; the /sdk vanity prefix binds to the repo root).

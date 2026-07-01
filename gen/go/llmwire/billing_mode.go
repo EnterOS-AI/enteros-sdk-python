@@ -11,7 +11,7 @@
 // What is deliberately NOT here: the resolvers/charging engines that *use* these
 // tokens (core's BillingModeResolution, CP's LLMModeForEnv / credits charging).
 // Those are environment-specific and stay in their owning repo. Only the
-// stable shared tokens move. See go.moleculesai.app/sdk for the design.
+// stable shared tokens move. See go.moleculesai.app/sdk/gen/go for the design.
 package llmwire
 
 // LLM billing mode — the per-workspace answer to "how is this workspace's LLM

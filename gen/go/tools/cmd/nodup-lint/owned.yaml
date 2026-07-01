@@ -21,11 +21,11 @@
 forbidden_paths: []
 
 symbols:
-  # LLM billing-mode wire strings — go.moleculesai.app/sdk/llmwire (billing_mode.go).
+  # LLM billing-mode wire strings — go.moleculesai.app/sdk/gen/go/llmwire (billing_mode.go).
   - LLMBillingModePlatformManaged
   - LLMBillingModeBYOK
   - LLMBillingModeDisabled
-  # LLM routing-mode wire tokens — go.moleculesai.app/sdk/llmwire (routing_mode.go).
+  # LLM routing-mode wire tokens — go.moleculesai.app/sdk/gen/go/llmwire (routing_mode.go).
   - LLMModePlatform
   - LLMModeByok
   - LLMModeFaithful
@@ -33,4 +33,4 @@ symbols:
 fingerprints: {}
 
 # Human-facing hint appended to every violation. Tells the offender what to do.
-import_hint: "This identifier is owned by go.moleculesai.app/sdk — import it (e.g. go.moleculesai.app/sdk/llmwire) instead of redeclaring it."
+import_hint: "This identifier is owned by go.moleculesai.app/sdk/gen/go — import it (e.g. go.moleculesai.app/sdk/gen/go/llmwire) instead of redeclaring it."

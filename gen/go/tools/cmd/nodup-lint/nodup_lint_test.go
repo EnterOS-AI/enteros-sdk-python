@@ -40,7 +40,7 @@ func TestLayerB_ReexportPasses(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeFile(t, dir, "good.go",
-		"package p\nimport \"go.moleculesai.app/sdk/llmwire\"\nconst LLMBillingModeBYOK = llmwire.LLMBillingModeBYOK\n")
+		"package p\nimport \"go.moleculesai.app/sdk/gen/go/llmwire\"\nconst LLMBillingModeBYOK = llmwire.LLMBillingModeBYOK\n")
 	vs, err := run(dir, spec, nil)
 	if err != nil {
 		t.Fatal(err)
