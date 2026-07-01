@@ -121,8 +121,13 @@ jobs:
           echo "$results" | python3 -c '
           import json, sys
           ns = json.load(sys.stdin)
+          # Strict: every required dependency MUST be "success". A required
+          # drift/conformance/parity gate that is skipped or cancelled must
+          # RED this aggregator, not pass it (review #40: an all-required gate
+          # can never treat non-success as acceptable, or the SSOT invariant
+          # it guards is unenforced).
           bad = [(k, v.get("result")) for k, v in ns.items()
-                 if v.get("result") not in ("success", None, "cancelled", "skipped")]
+                 if v.get("result") != "success"]
           if bad:
               print("FAIL: jobs not green:", file=sys.stderr)
               for k, r in bad:
