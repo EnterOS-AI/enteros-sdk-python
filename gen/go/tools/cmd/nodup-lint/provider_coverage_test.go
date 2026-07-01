@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-// The cloud-provider id constants (go.moleculesai.app/sdk/cloudprovider) are the
+// The cloud-provider id constants (go.moleculesai.app/sdk/gen/go/cloudprovider) are the
 // SSOT for the provider LIST. Once the consumers (controlplane
 // internal/cloudprovider, core workspace_compute.go) adopt the SDK, owned.yaml
 // gains these symbol names so a re-introduced hardcoded provider list — the
@@ -56,7 +56,7 @@ func TestProviderList_ReexportPasses(t *testing.T) {
 	// selector (cloudprovider.X), not a re-pasted literal.
 	writeFile(t, dir, "internal/cloudprovider/cloudprovider.go",
 		"package cloudprovider\n"+
-			"import sdkcp \"go.moleculesai.app/sdk/cloudprovider\"\n"+
+			"import sdkcp \"go.moleculesai.app/sdk/gen/go/cloudprovider\"\n"+
 			"const (\n"+
 			"\tAWS = sdkcp.AWS\n"+
 			"\tHetzner = sdkcp.Hetzner\n"+

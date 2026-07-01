@@ -1,5 +1,7 @@
-// Package sdk is the module root for go.moleculesai.app/sdk — the MoleculesAI
-// shared SSOT module.
+// Package sdk is the module root for go.moleculesai.app/sdk/gen/go — the
+// MoleculesAI shared SSOT module (a subdir module of the molecule-ai-sdk repo;
+// the /sdk vanity prefix binds to the repo root, so the go.mod under gen/go
+// resolves as go.moleculesai.app/sdk/gen/go).
 //
 // The SDK is OSS-licensed and NEUTRAL: it is imported by BOTH molecule-core
 // (OSS) and molecule-controlplane (proprietary), and therefore depends on

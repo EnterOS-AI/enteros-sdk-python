@@ -1,4 +1,4 @@
-module go.moleculesai.app/sdk
+module go.moleculesai.app/sdk/gen/go
 
 go 1.25.0
 

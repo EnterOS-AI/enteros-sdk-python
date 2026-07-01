@@ -10,7 +10,7 @@
 // gen-go.mjs uses: values from the contract, names/docs in the generator).
 //
 // Output: gen/go/cloudprovider/cloudprovider.go — importable byte-stably as
-// go.moleculesai.app/sdk/cloudprovider. The output is deliberately
+// go.moleculesai.app/sdk/gen/go/cloudprovider. The output is deliberately
 // BYTE-IDENTICAL to the retired molecule-go-sdk/cloudprovider/cloudprovider.go
 // (the parity oracle), so every existing importer rebuilds with zero source
 // churn. The moved-verbatim cloudprovider_test.go pins the behavior; the
