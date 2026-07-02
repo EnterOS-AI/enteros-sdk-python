@@ -1,0 +1,12 @@
+{
+  "entitlement_id": "ent_01J9SEOACME",
+  "org_slug": "acme",
+  "entry_id": "plugin:molecule-ai/seo-agent",
+  "kind": "plugin",
+  "source": "gitea://molecule-ai/molecule-ai-plugin-seo-agent#3f2a1b9c4d5e6f708192a3b4c5d6e7f8091a2b3c",
+  "status": "active",
+  "grant_reason": "purchase",
+  "granted_at": "2026-07-01T00:00:00Z",
+  "purchase_ref": "sub_opaque_ref_9f2a",
+  "seat_limit": 0
+}

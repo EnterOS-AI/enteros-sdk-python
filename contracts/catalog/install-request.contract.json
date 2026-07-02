@@ -1,0 +1,13 @@
+{
+  "entry_id": "plugin:molecule-ai/seo-agent",
+  "kind": "plugin",
+  "source": "gitea://molecule-ai/molecule-ai-plugin-seo-agent#3f2a1b9c4d5e6f708192a3b4c5d6e7f8091a2b3c",
+  "version": "1.2.0",
+  "target": {
+    "org_slug": "acme",
+    "workspace_id": "ws-42"
+  },
+  "mode": "reconcile",
+  "requested_by": "user:hongming",
+  "idempotency_key": "acme-ws-42-seo-agent-1.2.0"
+}

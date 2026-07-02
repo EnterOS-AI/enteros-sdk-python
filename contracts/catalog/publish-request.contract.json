@@ -1,0 +1,20 @@
+{
+  "kind": "plugin",
+  "source": "gitea://molecule-ai/molecule-ai-plugin-seo-agent#v1.2.0",
+  "name": "SEO Agent",
+  "slug": "seo-agent",
+  "description": "SEO research + content skills bundle.",
+  "version": "1.2.0",
+  "publisher": "molecule-ai",
+  "tags": ["seo", "content"],
+  "runtimes": ["claude-code"],
+  "visibility": "public",
+  "attestation": {
+    "mode": "keyless",
+    "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "signer": "https://git.moleculesai.app/molecule-ai",
+    "signature": "MEUCIQD-opaque-sigstore-bundle-placeholder-AiEA0000"
+  },
+  "pricing": { "model": "subscription", "amount_cents": 2000, "currency": "USD", "interval": "month" },
+  "idempotency_key": "seo-agent-1.2.0-publish"
+}

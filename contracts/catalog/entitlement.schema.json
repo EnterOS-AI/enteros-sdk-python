@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/entitlement.schema.json",
+  "title": "Marketplace Entitlement Record",
+  "description": "SSOT for the DATA shape of an entitlement \u2014 the record that an org MAY install/use a catalog listing. The marketplace agent WRITES it; the control-plane / storefront READ it to answer 'is this org entitled?'. DATA ONLY: it links to a purchase by an OPAQUE `purchase_ref` and carries NO Stripe/Connect/payout fields \u2014 the money system (owner-gated) lives outside this contract and joins in via `purchase_ref`. This is the who-owns-what record, not the payment. Revocation/expiry are first-class so the install/serve gate can fail-closed on a non-`active` entitlement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entitlement_id",
+    "org_slug",
+    "entry_id",
+    "source",
+    "kind",
+    "status",
+    "grant_reason",
+    "granted_at"
+  ],
+  "properties": {
+    "entitlement_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable, opaque entitlement id (unique per (org, entry) grant)."
+    },
+    "org_id": {
+      "type": "string",
+      "description": "Opaque org id (optional; `org_slug` is the stable handle)."
+    },
+    "org_slug": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Entitled org slug."
+    },
+    "entry_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The catalog entry id this entitlement grants (catalog-entry `id`)."
+    },
+    "kind": {
+      "$ref": "#/$defs/kind",
+      "description": "Artifact kind of the entitled listing."
+    },
+    "source": {
+      "$ref": "#/$defs/sourceRef",
+      "description": "Optional pinned gitea source-contract string of the entitled ref (the version the grant was made against)."
+    },
+    "status": {
+      "type": "string",
+      "description": "Entitlement state. Only `active` authorizes install/serve; every other value MUST fail-closed at the gate.",
+      "enum": [
+        "active",
+        "revoked",
+        "expired",
+        "suspended"
+      ]
+    },
+    "grant_reason": {
+      "type": "string",
+      "description": "Why the entitlement exists.",
+      "enum": [
+        "purchase",
+        "comp",
+        "bundle",
+        "trial",
+        "migration"
+      ]
+    },
+    "granted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp the entitlement was granted."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional RFC3339 expiry; absent = perpetual."
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional RFC3339 revocation time (set when `status` = `revoked`)."
+    },
+    "purchase_ref": {
+      "type": "string",
+      "description": "Opaque link to the money system's purchase/subscription record. Carries NO card/Stripe data \u2014 it is a join key into the owner-gated payment layer, not payment data."
+    },
+    "seat_limit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Optional seat/instance cap; 0 or absent = unlimited."
+    }
+  },
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind. Same SSOT enum as catalog-entry.schema.json.",
+      "enum": [
+        "plugin",
+        "workspace-template",
+        "org-template"
+      ]
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^gitea://[^#]+#([0-9a-f]{40}|[0-9a-f]{64})$",
+      "description": "IMMUTABLE gitea source-contract string `gitea://<owner>/<repo>[/<subpath>]#<commit-sha>` \u2014 the `#ref` MUST be a FULL resolved commit SHA (40 hex for SHA-1, or 64 hex for SHA-256 repos) \u2014 never a short prefix (ambiguous as history grows), branch, or tag, NOT a branch or tag, so the install/authorization target cannot move under the org. The marketplace agent resolves a submitted tag to this SHA."
+    }
+  }
+}

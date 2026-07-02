@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-07-01T00:00:00Z",
+  "publisher": "molecule-ai",
+  "entries": [
+    {
+      "id": "plugin:molecule-ai/seo-agent",
+      "kind": "plugin",
+      "slug": "seo-agent",
+      "name": "SEO Agent",
+      "description": "SEO research + content skills bundle.",
+      "version": "1.2.0",
+      "source": "gitea://molecule-ai/molecule-ai-plugin-seo-agent#v1.2.0",
+      "publisher": "molecule-ai",
+      "tags": ["seo", "content"],
+      "runtimes": ["claude-code"],
+      "visibility": "public",
+      "spec": {
+        "contributes": { "skills": [{ "name": "seo-all" }] },
+        "privileged": false,
+        "requires_secrets": ["SEO_AGENT_GOOGLE_SA"]
+      }
+    }
+  ]
+}

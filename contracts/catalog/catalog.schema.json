@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/catalog.schema.json",
+  "title": "Marketplace Catalog Document (served index)",
+  "description": "SSOT for the SERVED marketplace catalog document — the collection the storefront fetches and the server-side marketplace agent produces from the real listing repos. It wraps N catalog-entry envelopes plus catalog-level metadata. Each array item is a catalog-entry. IMPORTANT: this envelope schema validates the COMMON envelope ONLY — it deliberately does NOT re-encode catalog-entry's per-kind `spec` `oneOf` (this repo forbids cross-file `$ref`, and the codegen reads each schema standalone), so it is NOT a substitute for per-entry validation. catalog-entry.schema.json remains the authoritative per-listing shape; per-entry kind/spec validity is enforced OUTSIDE this schema — the marketplace agent validates every entry against catalog-entry.schema.json when it produces/consumes a catalog, and the contract test-suite validates the canonical entries against it here. Read-only projection: PRICE and ENTITLEMENT are deliberately NOT here (entitlement is entitlement.schema.json; pricing is a publish-request declaration + the agent's money layer, Phase 2). `schema_version` is const-pinned so a breaking catalog-document change surfaces as a visible MAJOR bump instead of a silent drift.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Catalog-document contract version. Pinned to `1`; a breaking change to the document shape (not the entries) is a deliberate MAJOR bump of this const."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp of when this catalog snapshot was produced by the marketplace agent."
+    },
+    "publisher": { "type": "string", "description": "Publisher/namespace that produced this catalog snapshot (e.g. `molecule-ai`)." },
+    "entries": {
+      "type": "array",
+      "description": "The listed catalog entries. Each item is a catalog-entry envelope and MUST validate against catalog-entry.schema.json.",
+      "items": { "$ref": "#/$defs/catalogEntryRef" }
+    }
+  },
+  "$defs": {
+    "catalogEntryRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "A catalog-entry envelope as it appears inside the served catalog. This MIRRORS the full common envelope of catalog-entry.schema.json (not just the required keys) so the generated SDK types are LOSSLESS — a consumer that unmarshals + reserializes a served catalog does not drop `slug`/`publisher`/`tags`/`runtimes`/`tier`/`visibility`. The per-kind `spec` shape (the `oneOf` keyed on `kind`) lives ONLY in catalog-entry.schema.json — this wrapper does NOT re-encode or enforce it (`additionalProperties` stays open so the per-kind `spec` passes through unchanged). Per-entry validity against catalog-entry.schema.json is enforced by the marketplace agent at produce/consume time and by the contract test-suite, NOT by this envelope schema.",
+      "required": ["id", "kind", "name", "version", "source", "spec"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable catalog entry id (matches catalog-entry.schema.json)." },
+        "kind": { "$ref": "#/$defs/kind", "description": "Artifact kind discriminator." },
+        "slug": { "type": "string", "description": "URL-safe slug for the listing." },
+        "name": { "type": "string", "minLength": 1, "description": "Display name." },
+        "description": { "type": "string", "description": "Marketplace description." },
+        "version": { "type": "string", "minLength": 1, "description": "Listed artifact version." },
+        "source": { "$ref": "#/$defs/sourceRef", "description": "Pinned gitea source-contract string resolving to the immutable artifact ref." },
+        "publisher": { "type": "string", "description": "Publisher/namespace (e.g. `molecule-ai`)." },
+        "tags": { "type": "array", "description": "Marketplace tags/keywords.", "items": { "type": "string", "description": "A single tag." } },
+        "runtimes": { "type": "array", "description": "Runtimes the artifact supports/targets.", "items": { "$ref": "#/$defs/runtimeId" } },
+        "tier": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Capability/cost tier 1-4 (templates; absent for plugins)." },
+        "visibility": { "$ref": "#/$defs/visibility", "description": "Listing visibility." },
+        "spec": { "type": "object", "additionalProperties": true, "description": "Per-kind listing spec (see catalog-entry.schema.json)." }
+      }
+    },
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind. Same SSOT enum as catalog-entry.schema.json.",
+      "enum": ["plugin", "workspace-template", "org-template"]
+    },
+    "visibility": {
+      "type": "string",
+      "description": "Catalog visibility. Same SSOT enum as catalog-entry.schema.json.",
+      "enum": ["public", "unlisted", "private"]
+    },
+    "runtimeId": {
+      "type": "string",
+      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as catalog-entry.schema.json / plugin-manifest.schema.json; underscore aliases accepted.",
+      "enum": [
+        "claude-code", "codex", "hermes", "openclaw", "langgraph", "autogen",
+        "crewai", "deepagents", "gemini-cli", "google-adk", "external",
+        "claude_code", "gemini_cli"
+      ]
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^gitea://[^#]+#[^#]+$",
+      "description": "Pinned gitea source-contract string `gitea://<owner>/<repo>[/<subpath>]#<ref>` — `#<ref>` is a release tag or commit (human-facing). The marketplace agent RESOLVES it to an immutable commit SHA and records THAT resolved SHA in the install-request + entitlement (whose `source` is SHA-only)."
+    }
+  }
+}

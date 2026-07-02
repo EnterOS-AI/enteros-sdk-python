@@ -20,6 +20,14 @@ try:  # NotRequired is stdlib on Python 3.11+
 except ImportError:  # pragma: no cover - Python < 3.11
     from typing_extensions import NotRequired
 
+# Load-bearing string literals pinned by `const` in the catalog contract schemas.
+
+# CATALOG_SCHEMA_VERSION is pinned by catalog/catalog.schema.json#/properties/schema_version: Catalog-document contract version. Pinned to `1`; a breaking change to the document shape (not the entries) is a deliberate MAJOR bump of this const.
+CATALOG_SCHEMA_VERSION = "1"
+
+# INSTALL_REQUEST_MODE is pinned by catalog/install-request.schema.json#/properties/mode: Delivery mode. Pinned to `reconcile` — delivery reuses the existing reconcile engines (not a push). A push mode would be a deliberate MAJOR change.
+INSTALL_REQUEST_MODE = "reconcile"
+
 class PluginManifest(TypedDict):
     """SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace plugin manifest — the publishable shape of a `plugin.yaml` artifact (molecule-ai-plugin-* repos), authored marketplace-side per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-plugin-molecule-careful-bash/plugin.yaml, image-gen/plugin.yaml, gh-identity/plugin.yaml, molecule-hitl/plugin.yaml, validated by each plugin repo's `.molecule-ci/scripts/validate-plugin.py` (required: name/version/description; runtimes must be a list; content is one of SKILL.md/hooks/skills/rules). The design is VS-Code-shaped: `engines` pins the minimum host version (like engines.vscode), and `contributes` is the OPEN, forward-compatible contribution surface — its KNOWN keys (skills/hooks/rules/mcpServers/commands, v1) are validated by shape while UNKNOWN contribution points (e.g. future themes/tabs/canvasElements) are tolerated (additionalProperties:true at the contributes level), so a newer plugin never fails this schema on an additive contribution point. The top-level `skills`/`hooks`/`rules` string lists mirror the real plugin.yaml v0 shorthand and remain accepted alongside the richer `contributes`. CANONICAL RUNTIMES: the `runtimes` enum is the SSOT reconciliation of the cross-artifact drift — the canonical form is the HYPHEN spelling (`claude-code`, matching the workspace/org templates and validate-workspace-template.py's known set); the legacy plugin UNDERSCORE spellings (`claude_code`, `gemini_cli`) used by today's plugin.yaml files are accepted as aliases (normalize to the hyphen form). The enum INCLUDES every runtime in use — claude-code, codex, hermes, openclaw, langgraph, autogen, crewai, deepagents, gemini-cli, google-adk, external — including deepagents/langgraph/autogen, which today's validate-plugin.py does not (it does not check the runtime enum) but real plugins already declare (gh-identity, molecule-hitl)."""
 
@@ -428,7 +436,167 @@ class CatalogEntryCatalogModel(TypedDict):
     # Human-readable model name.
     name: NotRequired[str]
 
+class Catalog(TypedDict):
+    """SSOT for the SERVED marketplace catalog document — the collection the storefront fetches and the server-side marketplace agent produces from the real listing repos. It wraps N catalog-entry envelopes plus catalog-level metadata. Each array item is a catalog-entry. IMPORTANT: this envelope schema validates the COMMON envelope ONLY — it deliberately does NOT re-encode catalog-entry's per-kind `spec` `oneOf` (this repo forbids cross-file `$ref`, and the codegen reads each schema standalone), so it is NOT a substitute for per-entry validation. catalog-entry.schema.json remains the authoritative per-listing shape; per-entry kind/spec validity is enforced OUTSIDE this schema — the marketplace agent validates every entry against catalog-entry.schema.json when it produces/consumes a catalog, and the contract test-suite validates the canonical entries against it here. Read-only projection: PRICE and ENTITLEMENT are deliberately NOT here (entitlement is entitlement.schema.json; pricing is a publish-request declaration + the agent's money layer, Phase 2). `schema_version` is const-pinned so a breaking catalog-document change surfaces as a visible MAJOR bump instead of a silent drift."""
+
+    # Catalog-document contract version. Pinned to `1`; a breaking change to the document shape (not the entries) is a deliberate MAJOR bump of this const.
+    schema_version: Any
+    # RFC3339 timestamp of when this catalog snapshot was produced by the marketplace agent.
+    generated_at: NotRequired[str]
+    # Publisher/namespace that produced this catalog snapshot (e.g. `molecule-ai`).
+    publisher: NotRequired[str]
+    # The listed catalog entries. Each item is a catalog-entry envelope and MUST validate against catalog-entry.schema.json.
+    entries: List[CatalogCatalogEntryRef]
+
+class CatalogCatalogEntryRef(TypedDict):
+    """A catalog-entry envelope as it appears inside the served catalog. This MIRRORS the full common envelope of catalog-entry.schema.json (not just the required keys) so the generated SDK types are LOSSLESS — a consumer that unmarshals + reserializes a served catalog does not drop `slug`/`publisher`/`tags`/`runtimes`/`tier`/`visibility`. The per-kind `spec` shape (the `oneOf` keyed on `kind`) lives ONLY in catalog-entry.schema.json — this wrapper does NOT re-encode or enforce it (`additionalProperties` stays open so the per-kind `spec` passes through unchanged). Per-entry validity against catalog-entry.schema.json is enforced by the marketplace agent at produce/consume time and by the contract test-suite, NOT by this envelope schema."""
+
+    # Stable catalog entry id (matches catalog-entry.schema.json).
+    id: str
+    # Artifact kind discriminator.
+    kind: str
+    # URL-safe slug for the listing.
+    slug: NotRequired[str]
+    # Display name.
+    name: str
+    # Marketplace description.
+    description: NotRequired[str]
+    # Listed artifact version.
+    version: str
+    # Pinned gitea source-contract string resolving to the immutable artifact ref.
+    source: str
+    # Publisher/namespace (e.g. `molecule-ai`).
+    publisher: NotRequired[str]
+    # Marketplace tags/keywords.
+    tags: NotRequired[List[str]]
+    # Runtimes the artifact supports/targets.
+    runtimes: NotRequired[List[str]]
+    # Capability/cost tier 1-4 (templates; absent for plugins).
+    tier: NotRequired[int]
+    # Listing visibility.
+    visibility: NotRequired[str]
+    # Per-kind listing spec (see catalog-entry.schema.json).
+    spec: Dict[str, Any]
+
+class Entitlement(TypedDict):
+    """SSOT for the DATA shape of an entitlement — the record that an org MAY install/use a catalog listing. The marketplace agent WRITES it; the control-plane / storefront READ it to answer 'is this org entitled?'. DATA ONLY: it links to a purchase by an OPAQUE `purchase_ref` and carries NO Stripe/Connect/payout fields — the money system (owner-gated) lives outside this contract and joins in via `purchase_ref`. This is the who-owns-what record, not the payment. Revocation/expiry are first-class so the install/serve gate can fail-closed on a non-`active` entitlement."""
+
+    # Stable, opaque entitlement id (unique per (org, entry) grant).
+    entitlement_id: str
+    # Opaque org id (optional; `org_slug` is the stable handle).
+    org_id: NotRequired[str]
+    # Entitled org slug.
+    org_slug: str
+    # The catalog entry id this entitlement grants (catalog-entry `id`).
+    entry_id: str
+    # Artifact kind of the entitled listing.
+    kind: str
+    # Optional pinned gitea source-contract string of the entitled ref (the version the grant was made against).
+    source: str
+    # Entitlement state. Only `active` authorizes install/serve; every other value MUST fail-closed at the gate.
+    status: str
+    # Why the entitlement exists.
+    grant_reason: str
+    # RFC3339 timestamp the entitlement was granted.
+    granted_at: str
+    # Optional RFC3339 expiry; absent = perpetual.
+    expires_at: NotRequired[str]
+    # Optional RFC3339 revocation time (set when `status` = `revoked`).
+    revoked_at: NotRequired[str]
+    # Opaque link to the money system's purchase/subscription record. Carries NO card/Stripe data — it is a join key into the owner-gated payment layer, not payment data.
+    purchase_ref: NotRequired[str]
+    # Optional seat/instance cap; 0 or absent = unlimited.
+    seat_limit: NotRequired[int]
+
+class InstallRequest(TypedDict):
+    """SSOT for the request to DELIVER a catalog listing into an org/workspace once the caller is entitled. Reconcile-not-push: this contract names WHAT (`entry_id` + pinned `source`) and WHERE (`target`) and an idempotency key; the marketplace agent then reconciles the artifact through the EXISTING install engines (plugin reconcile / workspace-template seed / org-template import) rather than pushing bespoke state. Authorization is SEPARATE — entitlement is checked against entitlement.schema.json / the agent's gate BEFORE delivery; this is the delivery-request shape, not the grant. `mode` is const-pinned to `reconcile` (a push-delivery mode would be a deliberate MAJOR change). NO money."""
+
+    # The catalog entry id being installed (catalog-entry `id`).
+    entry_id: str
+    # Artifact kind (selects the reconcile engine).
+    kind: str
+    # Pinned gitea source-contract string of the immutable ref to install.
+    source: str
+    # Optional explicit version to install; defaults to the ref pinned in `source`.
+    version: NotRequired[str]
+    # Where to install.
+    target: InstallRequestTarget
+    # Delivery mode. Pinned to `reconcile` — delivery reuses the existing reconcile engines (not a push). A push mode would be a deliberate MAJOR change.
+    mode: Any
+    # Identity that initiated the install (user id or agent id) — for audit.
+    requested_by: NotRequired[str]
+    # Client-supplied key so a re-sent install is deduped to one delivery.
+    idempotency_key: str
+
+class InstallRequestTarget(TypedDict):
+    """Install target. `org_slug` is always required (the owning org); `workspace_id` narrows a plugin/template install to a single workspace (absent = org-scoped, e.g. org-template or org-wide plugin)."""
+
+    # Opaque org id (optional; `org_slug` is the stable handle).
+    org_id: NotRequired[str]
+    # Owning org slug.
+    org_slug: str
+    # Target workspace id for a workspace-scoped install (absent = org-scoped).
+    workspace_id: NotRequired[str]
+
+class PublishRequest(TypedDict):
+    """SSOT for the payload an author submits to LIST or UPDATE an artifact in the marketplace — the producer -> marketplace-service contract (the `molecule-plugin` SDK's `publish` verb emits it; a manual publish sends the same shape). It names the artifact by KIND + a pinned `gitea://<owner>/<repo>[/<subpath>]#<ref>` source, plus listing metadata (name/description/tags/visibility/tier/runtimes). Optional `attestation` is the provenance/signing hook (present-but-optional so unsigned publish works today; the server agent may require it later). Optional `pricing` is a DECLARATION of the seller's intended price — DATA ONLY: the marketplace agent's payment integration (Stripe/Connect/payouts — owner-gated) consumes it; this contract performs NO payment processing and carries NO Stripe fields. The artifact's full manifest is NOT duplicated here — the agent resolves it from `source` and validates it against the sibling manifest contracts (plugin-manifest/, workspace-template/, org-template/)."""
+
+    # Artifact kind being published.
+    kind: str
+    # Pinned gitea source-contract string resolving to the immutable artifact ref being listed.
+    source: str
+    # Display name of the listing.
+    name: str
+    # URL-safe slug (derived from name if omitted).
+    slug: NotRequired[str]
+    # Marketplace description.
+    description: NotRequired[str]
+    # Version being published (e.g. `1.6.1`).
+    version: str
+    # Publisher/namespace submitting the listing (e.g. `molecule-ai`).
+    publisher: str
+    # Marketplace tags/keywords.
+    tags: NotRequired[List[str]]
+    # Runtimes the artifact targets (canonical hyphen form; underscore aliases accepted).
+    runtimes: NotRequired[List[str]]
+    # Requested listing visibility.
+    visibility: NotRequired[str]
+    # Capability/cost tier 1-4 (templates).
+    tier: NotRequired[int]
+    # Optional provenance/signing block (the Phase-3 signing hook; unsigned publish is allowed today).
+    attestation: NotRequired[PublishRequestAttestation]
+    # Optional price DECLARATION (data only; no payment processing in this contract).
+    pricing: NotRequired[PublishRequestPricing]
+    # Optional client-supplied key to dedupe a re-published request.
+    idempotency_key: NotRequired[str]
+
+class PublishRequestAttestation(TypedDict):
+    """Provenance/signing metadata for the published bundle. Optional — the server agent decides whether to require it."""
+
+    # Signing mode. `none` = unsigned (allowed today); `keyless` = Sigstore/OIDC keyless; `keypair` = detached keypair signature.
+    mode: str
+    # Lowercase sha256 (64 hex) of the published bundle.
+    digest: NotRequired[str]
+    # Detached signature / bundle (opaque; format per `mode`).
+    signature: NotRequired[str]
+    # Signer identity (OIDC subject or key id).
+    signer: NotRequired[str]
+
+class PublishRequestPricing(TypedDict):
+    """DECLARATION of the seller's intended price. DATA ONLY — no Stripe/Connect fields, no payment processing. The owner-gated payment integration in the marketplace agent consumes this."""
+
+    # Pricing model. `free` = no charge; `one-time` = single purchase; `subscription` = recurring.
+    model: str
+    # Price in minor units (cents). 0/absent for `free`.
+    amount_cents: NotRequired[int]
+    # ISO-4217 currency code (e.g. `USD`).
+    currency: NotRequired[str]
+    # Billing interval — only meaningful when `model` = `subscription`.
+    interval: NotRequired[str]
+
 __all__ = [
+    "CATALOG_SCHEMA_VERSION",
+    "INSTALL_REQUEST_MODE",
     "PluginManifest",
     "PluginManifestEngines",
     "PluginManifestContributes",
@@ -456,4 +624,12 @@ __all__ = [
     "CatalogEntryWorkspaceTemplateSpecEnv",
     "CatalogEntryOrgTemplateSpec",
     "CatalogEntryCatalogModel",
+    "Catalog",
+    "CatalogCatalogEntryRef",
+    "Entitlement",
+    "InstallRequest",
+    "InstallRequestTarget",
+    "PublishRequest",
+    "PublishRequestAttestation",
+    "PublishRequestPricing",
 ]

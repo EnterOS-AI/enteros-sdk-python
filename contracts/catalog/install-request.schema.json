@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/install-request.schema.json",
+  "title": "Marketplace Install Request",
+  "description": "SSOT for the request to DELIVER a catalog listing into an org/workspace once the caller is entitled. Reconcile-not-push: this contract names WHAT (`entry_id` + pinned `source`) and WHERE (`target`) and an idempotency key; the marketplace agent then reconciles the artifact through the EXISTING install engines (plugin reconcile / workspace-template seed / org-template import) rather than pushing bespoke state. Authorization is SEPARATE — entitlement is checked against entitlement.schema.json / the agent's gate BEFORE delivery; this is the delivery-request shape, not the grant. `mode` is const-pinned to `reconcile` (a push-delivery mode would be a deliberate MAJOR change). NO money.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entry_id", "kind", "source", "target", "mode", "idempotency_key"],
+  "properties": {
+    "entry_id": { "type": "string", "minLength": 1, "description": "The catalog entry id being installed (catalog-entry `id`)." },
+    "kind": { "$ref": "#/$defs/kind", "description": "Artifact kind (selects the reconcile engine)." },
+    "source": { "$ref": "#/$defs/sourceRef", "description": "Pinned gitea source-contract string of the immutable ref to install." },
+    "version": { "type": "string", "description": "Optional explicit version to install; defaults to the ref pinned in `source`." },
+    "target": { "$ref": "#/$defs/target", "description": "Where to install." },
+    "mode": {
+      "const": "reconcile",
+      "description": "Delivery mode. Pinned to `reconcile` — delivery reuses the existing reconcile engines (not a push). A push mode would be a deliberate MAJOR change."
+    },
+    "requested_by": { "type": "string", "description": "Identity that initiated the install (user id or agent id) — for audit." },
+    "idempotency_key": { "type": "string", "description": "Client-supplied key so a re-sent install is deduped to one delivery." }
+  },
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind. Same SSOT enum as catalog-entry.schema.json.",
+      "enum": ["plugin", "workspace-template", "org-template"]
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^gitea://[^#]+#([0-9a-f]{40}|[0-9a-f]{64})$",
+      "description": "IMMUTABLE gitea source-contract string `gitea://<owner>/<repo>[/<subpath>]#<commit-sha>` — the `#ref` MUST be a FULL resolved commit SHA (40 hex for SHA-1, or 64 hex for SHA-256 repos) — never a short prefix (ambiguous as history grows), branch, or tag, NOT a branch or tag, so the install/authorization target cannot move under the org. The marketplace agent resolves a submitted tag to this SHA."
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Install target. `org_slug` is always required (the owning org); `workspace_id` narrows a plugin/template install to a single workspace (absent = org-scoped, e.g. org-template or org-wide plugin).",
+      "required": ["org_slug"],
+      "properties": {
+        "org_id": { "type": "string", "description": "Opaque org id (optional; `org_slug` is the stable handle)." },
+        "org_slug": { "type": "string", "minLength": 1, "description": "Owning org slug." },
+        "workspace_id": { "type": "string", "description": "Target workspace id for a workspace-scoped install (absent = org-scoped)." }
+      }
+    }
+  }
+}

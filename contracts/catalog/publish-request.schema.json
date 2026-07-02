@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/publish-request.schema.json",
+  "title": "Marketplace Publish Request",
+  "description": "SSOT for the payload an author submits to LIST or UPDATE an artifact in the marketplace — the producer -> marketplace-service contract (the `molecule-plugin` SDK's `publish` verb emits it; a manual publish sends the same shape). It names the artifact by KIND + a pinned `gitea://<owner>/<repo>[/<subpath>]#<ref>` source, plus listing metadata (name/description/tags/visibility/tier/runtimes). Optional `attestation` is the provenance/signing hook (present-but-optional so unsigned publish works today; the server agent may require it later). Optional `pricing` is a DECLARATION of the seller's intended price — DATA ONLY: the marketplace agent's payment integration (Stripe/Connect/payouts — owner-gated) consumes it; this contract performs NO payment processing and carries NO Stripe fields. The artifact's full manifest is NOT duplicated here — the agent resolves it from `source` and validates it against the sibling manifest contracts (plugin-manifest/, workspace-template/, org-template/).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "source", "name", "version", "publisher"],
+  "properties": {
+    "kind": { "$ref": "#/$defs/kind", "description": "Artifact kind being published." },
+    "source": { "$ref": "#/$defs/sourceRef", "description": "Pinned gitea source-contract string resolving to the immutable artifact ref being listed." },
+    "name": { "type": "string", "minLength": 1, "description": "Display name of the listing." },
+    "slug": { "type": "string", "description": "URL-safe slug (derived from name if omitted)." },
+    "description": { "type": "string", "description": "Marketplace description." },
+    "version": { "type": "string", "minLength": 1, "description": "Version being published (e.g. `1.6.1`)." },
+    "publisher": { "type": "string", "minLength": 1, "description": "Publisher/namespace submitting the listing (e.g. `molecule-ai`)." },
+    "tags": { "type": "array", "description": "Marketplace tags/keywords.", "items": { "type": "string", "description": "A single tag." } },
+    "runtimes": {
+      "type": "array",
+      "description": "Runtimes the artifact targets (canonical hyphen form; underscore aliases accepted).",
+      "items": { "$ref": "#/$defs/runtimeId" }
+    },
+    "visibility": { "$ref": "#/$defs/visibility", "description": "Requested listing visibility." },
+    "tier": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Capability/cost tier 1-4 (templates)." },
+    "attestation": { "$ref": "#/$defs/attestation", "description": "Optional provenance/signing block (the Phase-3 signing hook; unsigned publish is allowed today)." },
+    "pricing": { "$ref": "#/$defs/pricing", "description": "Optional price DECLARATION (data only; no payment processing in this contract)." },
+    "idempotency_key": { "type": "string", "description": "Optional client-supplied key to dedupe a re-published request." }
+  },
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind. Same SSOT enum as catalog-entry.schema.json.",
+      "enum": ["plugin", "workspace-template", "org-template"]
+    },
+    "visibility": {
+      "type": "string",
+      "description": "Catalog visibility.",
+      "enum": ["public", "unlisted", "private"]
+    },
+    "runtimeId": {
+      "type": "string",
+      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as plugin-manifest.schema.json; underscore aliases accepted.",
+      "enum": [
+        "claude-code", "codex", "hermes", "openclaw", "langgraph", "autogen",
+        "crewai", "deepagents", "gemini-cli", "google-adk", "external",
+        "claude_code", "gemini_cli"
+      ]
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^gitea://[^#]+#[^#]+$",
+      "description": "Pinned gitea source-contract string `gitea://<owner>/<repo>[/<subpath>]#<ref>` — `#<ref>` is a release tag or commit (human-facing). The marketplace agent RESOLVES it to an immutable commit SHA and records THAT resolved SHA in the install-request + entitlement (whose `source` is SHA-only)."
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Provenance/signing metadata for the published bundle. Optional — the server agent decides whether to require it.",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "Signing mode. `none` = unsigned (allowed today); `keyless` = Sigstore/OIDC keyless; `keypair` = detached keypair signature.",
+          "enum": ["none", "keyless", "keypair"]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase sha256 (64 hex) of the published bundle."
+        },
+        "signature": { "type": "string", "description": "Detached signature / bundle (opaque; format per `mode`)." },
+        "signer": { "type": "string", "description": "Signer identity (OIDC subject or key id)." }
+      },
+      "allOf": [
+        {
+          "description": "A non-`none` attestation must carry real provenance — digest + signer + signature — otherwise it is a provenance-looking payload with no provenance.",
+          "if": { "properties": { "mode": { "enum": ["keyless", "keypair"] } } },
+          "then": { "required": ["digest", "signer", "signature"] }
+        }
+      ]
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "DECLARATION of the seller's intended price. DATA ONLY — no Stripe/Connect fields, no payment processing. The owner-gated payment integration in the marketplace agent consumes this.",
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Pricing model. `free` = no charge; `one-time` = single purchase; `subscription` = recurring.",
+          "enum": ["free", "one-time", "subscription"]
+        },
+        "amount_cents": { "type": "integer", "minimum": 0, "description": "Price in minor units (cents). 0/absent for `free`." },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO-4217 currency code (e.g. `USD`)." },
+        "interval": {
+          "type": "string",
+          "description": "Billing interval — only meaningful when `model` = `subscription`.",
+          "enum": ["month", "year"]
+        }
+      },
+      "allOf": [
+        {
+          "description": "Paid models must declare a price and currency — a bare `{model: one-time|subscription}` is an incomplete declaration.",
+          "if": { "properties": { "model": { "enum": ["one-time", "subscription"] } } },
+          "then": { "required": ["amount_cents", "currency"] }
+        },
+        {
+          "description": "A subscription must declare its billing interval.",
+          "if": { "properties": { "model": { "const": "subscription" } } },
+          "then": { "required": ["interval"] }
+        },
+        {
+          "description": "`free` carries no charge: no `interval`, and any `amount_cents` must be 0.",
+          "if": { "properties": { "model": { "const": "free" } } },
+          "then": { "properties": { "amount_cents": { "const": 0 }, "interval": false } }
+        }
+      ]
+    }
+  }
+}
