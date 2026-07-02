@@ -1,13 +1,117 @@
-# molecule_plugin — Python SDK for building Molecule AI plugins
+# molecule-ai-sdk
+
+The **Molecule AI SDK and contract SSOT**. One repo, three things:
+
+1. **Two Python packages** (published together under the distribution name `molecule-ai-sdk` in Molecule's private Gitea package registry — **not** on public PyPI):
+   - **`molecule_external_workspace`** — write an agent that runs *outside* the
+     platform's Docker network and joins a Molecule AI org from another machine.
+     It registers with the platform, pulls secrets, sends heartbeats, discovers
+     peers (A2A), delegates, and detects pause/delete. Public API:
+     `RemoteAgentClient`, `A2AServer`.
+   - **`molecule_plugin`** — build installable **plugin** directories (rules,
+     skills in agentskills.io format, per-runtime install adaptors) + validators
+     and a `python -m molecule_plugin` CLI. (See [Plugin authoring](#plugin-authoring--molecule_plugin).)
+
+2. **`contracts/` — the platform contract SSOT.** The JSON-Schema (draft 2020-12)
+   IDL for every cross-boundary contract in the platform, plus the cloud-provider
+   YAML SSOT. This is the former `molecule-contracts` repo, folded in and archived
+   here 2026-07-01. See [Contracts](#contracts--the-ssot).
+
+3. **`gen/` — generated bindings.** Go / TypeScript / Python types + constants
+   emitted from `contracts/` by `tools/gen-*.mjs`. Consumed by `molecule-core`
+   and `molecule-controlplane` (Go, via `go.moleculesai.app/sdk/gen/go/...`),
+   the storefront (TS), and the runtime (Python). **Never hand-edited** — a
+   fresh regen must match what's committed (enforced by CI).
+
+```
+molecule-ai-sdk/
+├── molecule_external_workspace/   # remote-agent client (RemoteAgentClient / A2AServer)
+├── molecule_plugin/               # plugin-authoring SDK + validators + CLI
+├── contracts/                     # JSON-Schema IDL SSOT + cloudproviders.yaml
+│   ├── mcp/  plugin-manifest/  workspace-template/  org-template/
+│   ├── catalog/                   # catalog-entry + marketplace-service (catalog/publish/install/entitlement)
+│   ├── provision-request/  promote-request/  workspace-comms/
+│   └── cloudproviders.yaml + cloudproviders.schema.json
+├── gen/{go,ts,python}/            # generated bindings (DO NOT EDIT)
+├── tools/gen-{go,ts,python}.mjs   # the generators (Node — no Go/Py toolchain in CI)
+├── template/                      # starter plugin scaffold
+└── tests/
+```
+
+## Install
+
+```bash
+pip install \
+  --index-url "https://git.moleculesai.app/api/packages/molecule-ai/pypi/simple" \
+  molecule-ai-sdk==0.3.0
+```
+
+Use `--index-url` (the private registry as the **sole** index), not
+`--extra-index-url` — for a first-party private package, an extra index invites
+dependency-confusion (pip may resolve the name from public PyPI instead). If your
+environment also needs public dependencies, configure the private registry to
+proxy PyPI, or resolve public deps from a separately-scoped index. Authenticate
+via `~/.netrc` (or `pip`'s keyring) — do **not** inline credentials in the URL.
+
+Go consumers import the generated bindings via the vanity path (no PyPI needed):
+
+```go
+import molcontracts "go.moleculesai.app/sdk/gen/go/molcontracts"
+```
+
+## Contracts — the SSOT
+
+Every contract is a **pair** under its `contracts/<domain>/` directory:
+
+- **`*.schema.json`** — the rules (JSON-Schema draft 2020-12): fields, types,
+  `required`, `enum`, `const` pins, `pattern`s. The enforceable definition.
+- **`*.contract.json`** — one canonical **instance** that MUST validate against
+  its sibling schema. It's the worked example, the CI anchor, and — for
+  value-bearing contracts like `mcp-plugin-delivery` — the SSOT for the concrete
+  values baked into `gen/`.
+
+Direction: `*.contract.json ──validate──▶ *.schema.json`, and
+`contracts/ ──codegen (tools/gen-*.mjs)──▶ gen/{go,ts,python}`. Each domain
+directory under [`contracts/`](./contracts) carries its own `README.md`
+describing that surface.
+
+Four CI gates back this (`.gitea/workflows/contracts-codegen-drift.yml`):
+`validate` (every instance validates against its schema), `codegen-drift`
+(committed `gen/` equals a fresh regen), `contract-conformance` (cloudproviders
+semantics), and `go-parity` (`gen/go` builds + vets + tests). Regenerate locally
+after any contract edit and commit the result:
+
+```bash
+node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs
+```
+
+## Remote agents — `molecule_external_workspace`
+
+```python
+from molecule_external_workspace import RemoteAgentClient
+
+client = RemoteAgentClient(
+    platform_url="https://<org>.moleculesai.app",
+    workspace_id="my-agent",
+    # the auth token is minted on first register() and persisted client-side
+)
+```
+
+The client wraps the workspace↔platform HTTP contract (register, pull secrets,
+heartbeat, state-poll, A2A peer discovery, delegation, plugin install) — the same
+surface captured in `contracts/workspace-comms/`. `A2AServer` is the receive side
+for agent-to-agent messages.
+
+## Plugin authoring — `molecule_plugin`
 
 A Molecule AI plugin is a directory that bundles rules, skills, and per-runtime
-install adaptors. Any plugin that conforms to this contract is installable
-on any Molecule AI workspace whose runtime the plugin supports.
+install adaptors. Any plugin that conforms to the contract is installable on any
+Molecule AI workspace whose runtime the plugin supports.
 
-## Quick start
+### Quick start
 
 Copy the repo's `template/` directory to a new directory and edit it. If you
-installed from PyPI, fetch the template from
+installed from the package registry (no repo checkout), fetch the scaffold from
 `https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/src/branch/main/template`.
 
 ```
@@ -30,18 +134,7 @@ errors = validate_manifest("my-plugin/plugin.yaml")
 assert not errors, errors
 ```
 
-Install the current internal SDK release from Molecule's Gitea PyPI registry,
-leaving PyPI as the dependency fallback:
-
-```bash
-pip install \
-  --extra-index-url "https://<user>:<token>@git.moleculesai.app/api/packages/molecule-ai/pypi/simple" \
-  molecule-ai-sdk==0.2.1
-```
-
-## CLI
-
-The SDK ships a CLI for validating Molecule AI artifacts before publishing:
+### CLI
 
 ```bash
 python -m molecule_plugin validate plugin    my-plugin/
@@ -66,11 +159,11 @@ from molecule_plugin import (
 )
 ```
 
-## Per-runtime adaptors — when to write a custom one
+### Per-runtime adaptors — when to write a custom one
 
-The default `AgentskillsAdaptor` handles the common shape: rules go into
-the runtime's memory file (CLAUDE.md), skill dirs go into `/configs/skills/`.
-That covers most plugins.
+The default `AgentskillsAdaptor` handles the common shape: rules go into the
+runtime's memory file (CLAUDE.md), skill dirs go into `/configs/skills/`. That
+covers most plugins.
 
 Write a custom adaptor when you need to:
 
@@ -96,7 +189,7 @@ class Adaptor:
         pass
 ```
 
-## Resolution order (understood by the platform)
+### Resolution order (understood by the platform)
 
 For `(plugin_name, runtime)`:
 
@@ -107,40 +200,20 @@ For `(plugin_name, runtime)`:
    and surfaces a warning; no tools are wired.
 
 You generally ship for path #2. If your plugin becomes popular enough to be
-promoted to "default," the Molecule AI team PRs a copy of your adaptor into
-the platform registry (path #1) so it survives upstream breakage.
+promoted to "default," the Molecule AI team PRs a copy of your adaptor into the
+platform registry (path #1) so it survives upstream breakage.
 
-## Testing locally
+### Supported runtimes
 
-The SDK ships `AgentskillsAdaptor` as a standalone, unit-testable class:
+The canonical runtime list is the SSOT enum in
+`contracts/plugin-manifest/plugin-manifest.schema.json`: `claude-code`, `codex`,
+`hermes`, `openclaw`, `langgraph`, `autogen`, `crewai`, `deepagents`,
+`gemini-cli`, `google-adk`, `external` (underscore aliases like `claude_code`
+are accepted). See the live list with `curl $PLATFORM_URL/plugins`.
 
-```python
-import asyncio
-from pathlib import Path
-from molecule_plugin import AgentskillsAdaptor, InstallContext
-
-ctx = InstallContext(
-    configs_dir=Path("/tmp/configs"),
-    workspace_id="local",
-    runtime="claude_code",
-    plugin_root=Path("./my-plugin"),
-)
-asyncio.run(AgentskillsAdaptor("my-plugin", "claude_code").install(ctx))
-# check /tmp/configs/CLAUDE.md, /tmp/configs/skills/
-```
-
-## Publishing
-
-A plugin is just a directory. Push it to any Git host. Installation via
-`POST /plugins/install {git_url}` is on the roadmap — see the platform's
-`PLAN.md` under "Install-from-GitHub-URL flow." Until then, plugins are
-bundled into the platform by dropping them into `plugins/` at deploy time.
-
-## Supported runtimes
-
-As of 2026-Q2: `claude_code`, `codex`, `hermes`, and `openclaw`. See the live
-list with:
+## Build and test
 
 ```bash
-curl $PLATFORM_URL/plugins
+pip install -e '.[test]'   # base packages + pytest-asyncio
+pytest -q
 ```
