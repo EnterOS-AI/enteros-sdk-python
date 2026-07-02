@@ -15,8 +15,16 @@ Python SDK for the Molecule AI agent platform. Exposes two user-facing packages:
   Molecule AI workspace. Ships validators for plugin.yaml, SKILL.md (agentskills.io
   spec), workspace/org/channel templates, and a `python -m molecule_plugin` CLI.
 
-Both packages are published together as `molecule-ai-sdk` on PyPI (`setuptools`,
-`pyproject.toml`, `requires-python = ">=3.11"`).
+Both packages ship together under the distribution name `molecule-ai-sdk` in
+Molecule's **private Gitea package registry** (`setuptools`, `pyproject.toml`,
+`requires-python = ">=3.11"`) — **not** on public PyPI. Install with the private
+registry as the sole index:
+
+```bash
+pip install \
+  --index-url "https://git.moleculesai.app/api/packages/molecule-ai/pypi/simple" \
+  molecule-ai-sdk
+```
 
 ---
 
@@ -105,20 +113,26 @@ examples/remote-agent/   # Runnable Phase 30.1–30.5 demo
 
 ## Release process
 
-PyPI publication is automated via GitHub Actions and triggered by **git tags** with
-a `v` prefix matching the version in `pyproject.toml` (e.g. tag `v0.2.1` publishes
-`molecule-ai-sdk==0.2.1`):
+Publishing to the private Gitea package registry is **manual** — there is no
+publish workflow. The `.gitea/workflows/` directory holds only `ci.yml`,
+`auto-promote-staging.yml`, and `contracts-codegen-drift.yml`; none of them build
+or upload the distribution.
+
+Cut a release by hand (Python 3.13 + `twine`):
 
 ```bash
-# 1. Update version in pyproject.toml
-# 2. Tag and push
-git tag v0.2.1
-git push origin v0.2.1
+# 1. Bump the version in pyproject.toml
+# 2. Build sdist + wheel
+python3.13 -m build
+# 3. Upload to the private Gitea registry
+python3.13 -m twine upload \
+  --repository-url "https://git.moleculesai.app/api/packages/molecule-ai/pypi" \
+  dist/*
 ```
 
-The GitHub Actions workflow handles sdist + wheel build and upload to PyPI.
-No manual steps required. Ensure you have PyPI token permissions in the repo
-secrets before the first release.
+Authenticate `twine` with a Gitea token scoped to `write:package` (via
+`~/.pypirc` or `TWINE_USERNAME`/`TWINE_PASSWORD`). Tag the release in Gitea for
+provenance; the tag does not trigger any automated publish.
 
 ---
 
@@ -233,4 +247,4 @@ python -m molecule_external_workspace verify-sha256 ./my-plugin-dir
   triage.
 - **CLAUDE.md/PLAN.md sync PRs:** treat these as always noteworthy.
 - **molecule-core docs:** Full platform `PLAN.md` and architecture docs at
-  `https://github.com/hongmingw/molecule-monorepo`
+  `https://git.moleculesai.app/molecule-ai/molecule-core`
