@@ -1,6 +1,6 @@
 {
   "name": "@molecule-ai/contracts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Generated TypeScript bindings for the molecule-ai contract SSOT (folded from molecule-contracts into molecule-ai-sdk / RFC molecule-core#3285). MCP plugin-delivery scalars + workspace-comms message types. Distinct dist from molecule-ai-sdk's own JS surface.",
   "license": "UNLICENSED",
   "private": false,

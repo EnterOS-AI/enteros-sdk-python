@@ -1,0 +1,31 @@
+{
+  "core_channel_metadata": {
+    "source": "telegram",
+    "channel_id": "9f4a2c1e-6b3d-4e8f-a1c2-0d5e7b9a3f61",
+    "chat_id": "123456789",
+    "user_id": "987654321",
+    "username": "hongming",
+    "message_id": "42",
+    "history": [
+      {
+        "user": "hongming",
+        "message": "What is the status of the staging deploy?",
+        "reply": "Staging is green — last deploy finished 12 minutes ago.",
+        "time": "2026-07-02T08:15:00Z"
+      }
+    ],
+    "extra": {
+      "chat_type": "private",
+      "first_name": "Hongming",
+      "last_name": "Wang"
+    }
+  },
+  "lark_bridge_header": {
+    "tag": "[lark-channel]",
+    "brand": "feishu",
+    "chat_id": "oc_a1b2c3d4e5f67890a1b2c3d4",
+    "chat_type": "p2p",
+    "sender_open_id": "ou_7d8e9f0a1b2c3d4e5f607182",
+    "message_id": "om_x1y2z3a4b5c6d7e8f9a0b1c2"
+  }
+}

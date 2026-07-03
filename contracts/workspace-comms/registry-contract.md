@@ -58,6 +58,7 @@ proposed canonical decision is noted; the contentious ones are filed as issues.
 6. **`agent_card` has no shared shape** — `RawMessage`/dict everywhere; each impl ships a different card. → pin a minimal canonical sub-schema (required `{name}`).
 7. **Status-code semantics are prose** — consumers hard-code `404=deleted`, `410=cursor-lost` etc.; a producer code change silently mis-behaves the client. → first-class typed outcomes when enforcement lands.
 8. **`delegate idempotency_key`** is consumer-derived (`sha256(task+minute)`) but producer-opaque → two consumers could compute different keys → dedup miss.
+9. **Channel provenance has two variant shapes** — core's channel manager attaches structured `params.metadata` (`source`/`channel_id`/`chat_id`/`user_id`/`username`/`message_id`/`history`/`extra`, `internal/channels/manager.go HandleInbound`) while the external lark bridge prepends an in-band text header (`[lark-channel] brand= chat_id= chat_type= sender_open_id= message_id=`, lark-channel-molecule `bridge.py _build_payload`) — different placement AND field names. Both captured descriptively in `channel-provenance.schema.json`/`.contract.json`. → unify via the runtime-stamped provenance lane of the local event socket (PR-2, workspace-runtime#215).
 
 ## Enforcement (deferred)
 

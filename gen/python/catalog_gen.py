@@ -71,7 +71,7 @@ class PluginManifestEngines(TypedDict):
     molecule: NotRequired[str]
 
 class PluginManifestContributes(TypedDict):
-    """The contribution surface. KNOWN keys (v1) below are validated by shape. UNKNOWN keys (future contribution points such as `themes`, `tabs`, `canvasElements`) are explicitly TOLERATED via additionalProperties:true — adding a new contribution point MUST NOT fail validation against this schema (forward-compat)."""
+    """The contribution surface. KNOWN keys (skills/hooks/rules/mcpServers/commands v1; daemons per runtime#216) below are validated by shape. UNKNOWN keys (future contribution points such as `themes`, `tabs`, `canvasElements`) are explicitly TOLERATED via additionalProperties:true — adding a new contribution point MUST NOT fail validation against this schema (forward-compat). `daemons` itself landed exactly this way: the runtime shipped it as an additive point tolerated by this open object, and this schema now captures its shape descriptively."""
 
     # Structured skill contributions.
     skills: NotRequired[List[PluginManifestSkillContribution]]
@@ -83,6 +83,8 @@ class PluginManifestContributes(TypedDict):
     mcpServers: NotRequired[List[PluginManifestMcpServerContribution]]
     # Slash-command contributions.
     commands: NotRequired[List[PluginManifestCommandContribution]]
+    # Long-running daemon contributions (ADDITIVE contribution point, captured from reality per molecule-ai-workspace-runtime#216): the workspace runtime (molecule_runtime/plugin_daemons.py) spawns each declared daemon at boot, restarts it on crash with exponential backoff (circuit breaker after 10 consecutive fast failures), and kills it with the workspace — e.g. a channel bridge like lark-channel-molecule's `lark-bridge`. The entry shape deliberately mirrors `mcpServerContribution` (name + command/args?/env?) rather than inventing a new descriptor. RUNTIME VALIDATION IS SKIP-NOT-REJECT: a malformed entry (or a non-list `daemons` value) is SKIPPED with a loud warning at daemon discovery — it never crashes boot and never fails manifest validation; this schema pins what the runtime treats as a WELL-FORMED entry (`_entry_problem`).
+    daemons: NotRequired[List[PluginManifestDaemonContribution]]
 
 class PluginManifestSkillContribution(TypedDict):
     """A single contributed skill."""
@@ -125,6 +127,20 @@ class PluginManifestMcpServerContribution(TypedDict):
     env: NotRequired[Dict[str, str]]
     # Whether this MCP server is the privileged management surface.
     privileged: NotRequired[bool]
+
+class PluginManifestDaemonContribution(TypedDict):
+    """A single contributed long-running daemon, exactly the shape molecule-ai-workspace-runtime's plugin_daemons.py parses (runtime#216): `{name, command, args?, env?, cwd?}`. The runtime spawns `[command, *args]` in its own session/process group, with the workspace process env overlaid with `env`, in `cwd` (plugin-dir-relative; default: the plugin dir itself). Requiredness and item types mirror the runtime's `_entry_problem` checks verbatim: non-mapping entry, missing/whitespace-only `name` or `command`, non-string-list `args`, and non-mapping `env` are what the runtime SKIPS (with a warning) — everything else it accepts. First real consumer: lark-channel-molecule's `plugin.yaml` (`{name: lark-bridge, command: bash, args: [daemon-bootstrap.sh]}`)."""
+
+    # Daemon name (required, non-blank — the runtime rejects a missing/empty/whitespace-only name). Namespaced by the owning plugin into the supervisor key `<plugin>/<name>`, so two plugins may both declare a daemon called `bridge`.
+    name: str
+    # Launch command (required, non-blank), e.g. `bash` or `python`. The spawned argv is `[command, *args]`.
+    command: str
+    # Optional command arguments. Must be a list of strings — the runtime skips the entry on any non-string item.
+    args: NotRequired[List[str]]
+    # Optional environment map (var→value) overlaid on the workspace process env for the daemon. The runtime rejects only a non-mapping `env`; it str()-coerces non-string VALUES rather than rejecting them — string values are the canonical form. An explicitly-null `env` is treated as absent by the runtime (YAML `env:` with no value), though this schema's canonical form is to omit the key.
+    env: NotRequired[Dict[str, str]]
+    # Optional working directory, resolved against the plugin dir when relative (default: the plugin dir itself). The runtime never validates `cwd` — a non-string value is str()-coerced rather than rejected; a string path is the canonical form.
+    cwd: NotRequired[str]
 
 class PluginManifestCommandContribution(TypedDict):
     """A single contributed slash-command."""
@@ -604,6 +620,7 @@ __all__ = [
     "PluginManifestHookContribution",
     "PluginManifestRuleContribution",
     "PluginManifestMcpServerContribution",
+    "PluginManifestDaemonContribution",
     "PluginManifestCommandContribution",
     "WorkspaceTemplate",
     "WorkspaceTemplateProvider",
