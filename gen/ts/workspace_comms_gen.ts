@@ -18,6 +18,9 @@ export const A2aEnvelopeRequestJsonrpc = "2.0" as const;
 // A2aEnvelopeResponseStatus is pinned by workspace-comms/a2a-envelope.schema.json#/properties/response/properties/status: The literal "queued" — delivery acknowledged but pending consumption (poll-mode logged to activity, or push over-budget acked async).
 export const A2aEnvelopeResponseStatus = "queued" as const;
 
+// ChannelProvenanceLarkBridgeHeaderTag is pinned by workspace-comms/channel-provenance.schema.json#/$defs/larkBridgeHeader/properties/tag: The literal header tag `[lark-channel]` that opens the provenance line — the marker a receiving agent can key on to recognize a bridge-relayed turn.
+export const ChannelProvenanceLarkBridgeHeaderTag = "[lark-channel]" as const;
+
 // HeartbeatResponseStatus is pinned by workspace-comms/heartbeat.schema.json#/properties/response/properties/status: Always the literal "ok" on a successful 200 (gin.H{"status": "ok", ...}).
 export const HeartbeatResponseStatus = "ok" as const;
 
@@ -88,6 +91,62 @@ export interface AgentCard {
   url?: string;
   /** Optional free-text description of the agent's purpose, as carried by the A2A agent card. */
   description?: string;
+}
+
+// ChannelProvenance: DESCRIPTIVE contract (capture-from-reality; enforcement deferred, per the registry-contract.md convention and the contracts#4 precedent) for the channel-provenance metadata that channel bridges ALREADY attach to an A2A `message/send` turn when they relay an inbound social-channel message into a workspace. There are TWO variant shapes in production today and this file documents BOTH as they are — it deliberately does NOT invent a unified shape: (1) `core_channel_metadata` — molecule-core's channel manager (workspace-server/internal/channels/manager.go HandleInbound) builds the JSON-RPC body itself and attaches a STRUCTURED metadata object at `params.metadata` (a SIBLING of `params.message` — note this is NOT the `params.message.metadata` bag modeled by a2a-envelope.schema.json; it passes the envelope only because `params` is additionalProperties:true there). (2) `lark_bridge_header` — the external lark-channel-molecule bridge (lark_channel_molecule/bridge.py _build_payload) forwards over peer A2A via send_a2a_message, which takes a PLAIN STRING, so its provenance is a one-line TEXT HEADER (`[lark-channel] brand=... chat_id=... chat_type=... sender_open_id=... message_id=...`) prepended to the message text inside the single text part — no structured metadata at all. This instance-pair-in-one-file layout mirrors the a2a-envelope request/response convention: a REAL turn carries exactly ONE of the two variants; the canonical instance documents both so each variant has a pinned example. DIVERGENCE NOTE (tracked for the future, not resolved here): the two producers disagree on both PLACEMENT (structured params.metadata vs in-band text header) and FIELD NAMES (user_id/username vs sender_open_id; channel_id vs brand). Unifying them into one runtime-stamped provenance shape is the PR-2 local-event-socket work (molecule-ai-workspace-runtime#215); when that lands, the unified shape should be captured here and these two variants become the legacy record.
+export interface ChannelProvenance {
+  /** Variant 1 — molecule-core channel manager. The structured object HandleInbound marshals at `params.metadata` of the A2A JSON-RPC body (manager.go, the json.Marshal literal). Additional provenance breadcrumb outside this object: the same producer sets `params.message.messageId` to `channel-<channel_type>-<platform message_id>`. */
+  core_channel_metadata: ChannelProvenanceCoreChannelMetadata;
+  /** Variant 2 — lark-channel-molecule bridge. The PARSED fields of the `[lark-channel] ...` text header line the bridge prepends to the forwarded message text (bridge.py _build_payload). On the wire this is NOT an object: it is line 1 of the text part, followed by a blank line, the user's message text, and a fixed relay trailer. */
+  lark_bridge_header: ChannelProvenanceLarkBridgeHeader;
+}
+
+// ChannelProvenanceCoreChannelMetadata: The metadata object molecule-core's Manager.HandleInbound attaches at `params.metadata` when relaying an inbound social-channel message (telegram/discord/slack/lark adapters) to the workspace over the A2A proxy. Every key below is ALWAYS emitted (they are literal keys of one map literal in manager.go); `history` and `extra` are modeled optional only because their VALUES may be JSON null (nil history slice when Redis is unavailable; nil adapter metadata) and this schema has no nullable union. additionalProperties:true — descriptive: a future core addition must not fail this record.
+export interface ChannelProvenanceCoreChannelMetadata {
+  /** The channel type of the originating adapter (`ch.ChannelType`), e.g. `telegram`, `discord`, `slack`, `lark`. Open string — the set is the adapter registry, not an enum pinned here. */
+  source: string;
+  /** The `workspace_channels` row id (`ch.ID`) of the channel binding that received the message. */
+  channel_id: string;
+  /** Platform-specific chat/channel id of the originating conversation (`msg.ChatID`). */
+  chat_id: string;
+  /** Platform-specific id of the sending user (`msg.UserID`). Also matched against the channel allowlist. */
+  user_id: string;
+  /** Human-readable sender name (`msg.Username`). Also the `user` recorded into history entries. */
+  username: string;
+  /** Platform-specific id of the inbound message (`msg.MessageID`), used for threading. The producer also embeds it in `params.message.messageId` as `channel-<channel_type>-<message_id>`. */
+  message_id: string;
+  /** Recent conversation history for this (channel_type, chat_id), loaded from Redis (`loadHistory`, key `channel:<type>:<chat_id>:history`, capped at maxHistoryEntries). JSON null (not `[]`) when Redis is unavailable or the key is empty — the key itself is always present. */
+  history?: ChannelProvenanceHistoryEntry[];
+  /** The adapter's platform-specific extras, passed through verbatim (`msg.Metadata`, a Go map[string]string — adapter.go InboundMessage). E.g. telegram sets chat_type/first_name/last_name (or callback_data/decision for button callbacks). JSON null when the adapter set none. */
+  extra?: Record<string, string>;
+}
+
+// ChannelProvenanceHistoryEntry: One prior exchange in the channel conversation, exactly as `appendHistory` marshals it into Redis (manager.go): all four keys are written on every append. `loadHistory` unmarshals each entry as a string→string map and silently drops undecodable entries.
+export interface ChannelProvenanceHistoryEntry {
+  /** Sender username of the exchange (the inbound `username`). */
+  user: string;
+  /** The user's inbound message text. */
+  message: string;
+  /** The agent's reply text delivered back to the channel (empty string when no reply was sent). */
+  reply: string;
+  /** UTC timestamp of the exchange, RFC 3339 (`time.Now().UTC().Format(time.RFC3339)`). */
+  time: string;
+}
+
+// ChannelProvenanceLarkBridgeHeader: The parsed fields of the one-line provenance header the lark-channel-molecule bridge prepends to every forwarded message (bridge.py _build_payload): `[lark-channel] brand=<brand> chat_id=<id> chat_type=<type> sender_open_id=<id> message_id=<id>`. All six tokens are always present — the bridge substitutes the literal string `unknown` for a missing chat_type or sender_open_id rather than omitting the token. additionalProperties:false because the line format is exactly these fields; adding one is a bridge change that must update this record.
+export interface ChannelProvenanceLarkBridgeHeader {
+  /** The literal header tag `[lark-channel]` that opens the provenance line — the marker a receiving agent can key on to recognize a bridge-relayed turn. */
+  tag: string;
+  /** Which brand of the Lark platform the message came from — `feishu` (CN) or `lark` (intl). The two brands are DISJOINT deployments (separate app credentials and API domains); the bridge is configured with exactly one and stamps it here. Bridge default: `feishu`. */
+  brand: string;
+  /** Lark chat id of the originating conversation (`oc_...`) — the id the bridge delivers the agent's reply back to. */
+  chat_id: string;
+  /** Lark chat type (`p2p` for a DM, `group` for a group chat), or the literal `unknown` when the event omitted it. */
+  chat_type: string;
+  /** The sender's Lark open_id (`ou_...`), or the literal `unknown` when unavailable. */
+  sender_open_id: string;
+  /** Lark message id (`om_...`) of the inbound message — the bridge's dedup key and the reply-threading anchor. */
+  message_id: string;
 }
 
 // Heartbeat: SSOT JSON-Schema (draft 2020-12) for POST /registry/heartbeat — the periodic workspace->platform liveness + telemetry beat. Promoted from workspace-comms/registry-contract.md, DERIVED FROM THE WIRE AUTHORITY: molecule-core workspace-server/internal/models/workspace.go (`HeartbeatPayload` + `RuntimeMetadata`) and internal/handlers/registry.go (the Heartbeat handler's gin.H response). The instance models BOTH directions: `request` = HeartbeatPayload, `response` = the heartbeat ack. Requiredness mirrors the Go binding tags (only `workspace_id` is `binding:"required"`; everything else is optional — value fields default to their Go zero value, pointer/`,omitempty` fields are genuinely absentable). Two nullable tri-states are load-bearing and intentionally modeled as boolean (absent != false): `mcp_server_present` (nil=allow / false=fail-closed / true=ok) and the OMITTED-vs-empty distinction on `loaded_mcp_tools` (registry-contract.md divergence #5). The agent_card sub-shape (backfill-only) is the minimal shared one (see agent-card.schema.json), inlined under $defs/agentCard for offline validation.

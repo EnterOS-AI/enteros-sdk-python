@@ -30,6 +30,17 @@
         "description": "Provision a new workspace under this org (wraps the provision_workspace MCP tool)."
       }
     ],
+    "daemons": [
+      {
+        "name": "lark-bridge",
+        "command": "bash",
+        "args": ["daemon-bootstrap.sh"],
+        "env": {
+          "LARK_DOMAIN": "feishu"
+        },
+        "cwd": "."
+      }
+    ],
     "tabs": [
       {
         "id": "org-roster",
