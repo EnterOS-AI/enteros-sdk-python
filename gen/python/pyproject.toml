@@ -24,7 +24,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molecule-ai-contracts"
-version = "0.3.0"
+version = "0.3.1"
 description = "Generated Python bindings for the molecule-ai contract SSOT (folded from molecule-contracts into molecule-ai-sdk / RFC molecule-core#3285): MCP plugin-delivery scalars + workspace-comms message TypedDicts."
 requires-python = ">=3.8"
 license = { text = "UNLICENSED" }
