@@ -1,0 +1,134 @@
+# registry.yaml — the SINGLE SOURCE OF TRUTH (SSOT) for the CONTAINER IMAGE
+# REGISTRY every MoleculesAI image reference derives from: the "where do image
+# manifests physically live, and how does a box authenticate to pull/push them"
+# axis. It is the container-registry analogue of contracts/cloudproviders.yaml
+# (the compute-backend SSOT) and of the LLM providers registry — one file that,
+# when edited, repoints every image ref org-wide.
+#
+# WHY THIS EXISTS
+#   Before this contract the registry identity was fragmented across FOUR
+#   mechanisms with THREE divergent baked defaults:
+#     1. molecule-controlplane/internal/provisioner/registry.go  → ECR default
+#        (153263036946.dkr.ecr.us-east-2.amazonaws.com/molecule-ai)
+#     2. molecule-core/workspace-server/internal/provisioner/registry.go
+#        → GHCR default (ghcr.io/molecule-ai)
+#     3. molecule-controlplane/internal/envs/envs.go topology
+#        → a SECOND ECR account (004947743811.dkr.ecr.us-east-2.amazonaws.com)
+#     4. CI publishers (molecule-ci + per-template publish-image.yml)
+#        → some hardcode ECR, some hardcode registry.moleculesai.app + a
+#          localhost:3200 push host, each reading a different (or no) var.
+#   Switching registries therefore meant editing N files. This contract makes
+#   the switch a ONE-VALUE edit (this file / one env var / one org CI var).
+#
+# HOW IT IS DERIVED  (the two runtime seams + one CI seam)
+#   * Go runtime consumers (CP + core provisioners) already read the
+#     MOLECULE_IMAGE_REGISTRY env var (registry.go RegistryPrefix()); this
+#     contract's `env_var` names it and `prefix` is the value that env should
+#     carry. The baked-in Go defaults are being converged onto `prefix` so an
+#     UNSET env resolves here too (see molecule-core PR feat/registry-default-ssot).
+#   * CI publishers derive IMAGE_NAME from the `ci_var` org/repo variable with
+#     `prefix` as the literal fallback — the exact `vars.X || 'literal'` pattern
+#     already proven by publish-canvas-image.yml (SSOT-Instance-10 #333).
+#   * tools/gen-registry.mjs reads THIS file and emits byte-stable bindings:
+#       gen/registry/registry.env          (sourced by CI / compose / scripts)
+#       gen/go/registry/registry.go        (Go consts: Prefix, Host, Owner, …)
+#     A self-contained drift gate (.gitea/workflows/registry-ssot-drift.yml)
+#     re-runs the generator and fails if gen/ drifts — gen/ is NEVER hand-edited,
+#     so editing THIS file is the only edit that moves the registry everywhere.
+#
+# TO SWITCH REGISTRIES (ECR <-> GHCR <-> our own) — pick ONE:
+#   A. Permanent / OSS default:   edit `prefix` here, run the generator, commit.
+#   B. Per-deploy override:       set env  MOLECULE_IMAGE_REGISTRY=<prefix>
+#                                 (Railway / compose / EC2 user-data).
+#   C. CI publish target:         set org var  MOLECULE_REGISTRY=<prefix>.
+#   Each is a single value; nothing else changes. See `switch_examples` below.
+version: 1
+
+# --- the canonical registry identity ---------------------------------------
+# `prefix` = host[/owner]; the value MOLECULE_IMAGE_REGISTRY / MOLECULE_REGISTRY
+# should carry and the baked Go defaults converge onto. Per the operator
+# directive (memory: no-aws-provisioning / cf-r2-relay) the canonical registry
+# is OUR OWN Gitea-backed OCI registry, NOT ECR/GHCR.
+registry:
+  id: gitea
+  display: MoleculesAI Registry (Gitea OCI)
+  host: registry.moleculesai.app
+  owner: molecule-ai
+  prefix: registry.moleculesai.app/molecule-ai
+  # CF-bypass push endpoint: registry.moleculesai.app is Cloudflare-fronted with
+  # a WAF/body-size limit that rejects large blob PUTs, so publishers PUSH to the
+  # host-local port and the content-addressed manifest is identical either way.
+  # Pull always uses the public HTTPS host.
+  push_host: localhost:3200
+  # Box-side pull/push auth SHAPE (never a secret value — creds stay in box env).
+  # Mirrors molecule-controlplane/internal/provisioner/imageregistry.go
+  # GiteaRegistry.Auth(): basic docker-login with a Gitea PAT.
+  auth:
+    kind: basic            # none | basic | ecr-login
+    username_env: GITEA_USER
+    password_env: GITEA_TOKEN
+    region: ""             # only for kind=ecr-login
+
+# --- derivation seam names (data, not code) --------------------------------
+# The env var Go runtime consumers read (CP + core RegistryPrefix()).
+env_var: MOLECULE_IMAGE_REGISTRY
+# The Gitea org/repo Actions variable CI publishers derive IMAGE_NAME from.
+ci_var: MOLECULE_REGISTRY
+# The Gitea org/repo Actions variable for the CF-bypass push host override.
+ci_push_host_var: MOLECULE_REGISTRY_PUSH_HOST
+
+# --- retention policy (SSOT for image GC) ----------------------------------
+# Our Gitea registry runs stock Gitea package defaults = effectively UNBOUNDED
+# per-package version growth (verified live 2026-07-04: openclaw=9, claude-code=8,
+# codex=7, hermes=6, controlplane=6 versions — all over the cap, no keep-N GC
+# anywhere). This declares the keep-N-per-package policy the operator prune cron
+# (operator-config/bin/gitea-package-retention.py + cron/molecule-gitea-package-
+# retention) enforces via the Gitea packages API: for each package keep every
+# PINNED version + the keep_max_versions most-recent UNPINNED versions, prune the
+# rest, then trigger Gitea's cleanup_packages cron to GC orphaned blobs. The ECR
+# side (dormant SaaS registry) keeps its own AWS-native lifecycle policy
+# (scripts/ops/ensure-ecr-lifecycle.sh, keep-10-per-family); this block governs
+# OUR registry.
+retention:
+  # Keep at most N most-recent UNPINNED versions per package; prune older ones.
+  keep_max_versions: 5
+  # A version is PINNED (kept forever, exempt from the keep-N window) iff its
+  # tag matches ANY glob here — floating/named pointers the fleet resolves BY
+  # NAME (a live deploy pins prod-*, a canary staging-*, a pull latest), so
+  # deleting one breaks a running workload. The detailed keep-list SSOT is
+  # operator-config/etc/registry-retention.conf; these are the representative
+  # families. Globs are quoted so leading '*' is not read as a YAML alias.
+  keep_tags: ["latest", "stable", "release", "prod-*", "staging-*", "*-kernel", "keep-*", "migrated-*", "v1"]
+  pinned_exempt: true
+  # HOW "pinned" is decided (NOT a DB table — verified against the live script):
+  #   (a) tag matches a keep_tags/keep-list glob (above), OR
+  #   (b) [containers, STRUCTURAL] a sha256: digest sub-manifest still
+  #       referenced by a SURVIVING tag's OCI image index (the per-arch children
+  #       behind a kept tag; resolved live via the /v2 registry API — never
+  #       deleted out from under a tag being kept).
+  pin_source: tag-keep-list (operator-config/etc/registry-retention.conf) + structural OCI-index digest refs
+  # Untagged / dangling upload versions are always eligible for prune.
+  prune_untagged: true
+
+# --- dynamic pull-through mirror (optional; container analogue of the
+#     source-provider ecosystem) -------------------------------------------
+# When enabled, OUR registry serves an upstream's image on-demand (proxy-cache)
+# instead of requiring an explicit mirror-push. Off by default; the abstraction
+# is declared here so turning it on is a config edit, not a code change.
+mirror:
+  enabled: false
+  # Upstreams our registry may pull-through-cache from, in priority order.
+  upstreams:
+    - id: ecr
+      prefix: 153263036946.dkr.ecr.us-east-2.amazonaws.com/molecule-ai
+      auth: ecr-login
+    - id: ghcr
+      prefix: ghcr.io/molecule-ai
+      auth: basic
+
+# --- switch examples (documentation as data) -------------------------------
+switch_examples:
+  to_our_registry: registry.moleculesai.app/molecule-ai
+  to_ecr_prod:     153263036946.dkr.ecr.us-east-2.amazonaws.com/molecule-ai
+  to_ecr_staging:  004947743811.dkr.ecr.us-east-2.amazonaws.com/molecule-ai
+  to_ghcr:         ghcr.io/molecule-ai

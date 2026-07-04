@@ -85,3 +85,55 @@ no source change — distinct from `molecule-ai-sdk`'s own JS/Py surface:
 - Go: `go.moleculesai.app/sdk/gen/go/molcontracts` (the folded package, additive
   to the single `go.moleculesai.app/sdk/gen/go` module — a subdir module of the
   molecule-ai-sdk repo; the /sdk vanity prefix binds to the repo root).
+
+## Registry SSOT (`contracts/registry.yaml`) — the ONE container-registry source
+
+`contracts/registry.yaml` is the single source of truth for the **container
+image registry** every MoleculesAI image reference derives from (host/owner,
+box auth SHAPE, retention policy, optional dynamic pull-through mirror). It is
+the container analogue of `cloudproviders.yaml`. It has its OWN self-contained
+generator + drift gate, decoupled from the cloudprovider/molcontracts pipeline:
+
+```
+contracts/registry.yaml            (flat YAML SSOT + contracts/registry.schema.json)
+        │  node tools/gen-registry.mjs
+        ▼
+gen/registry/registry.env          (source-able fragment for CI / compose / scripts)
+gen/go/registry/registry.go        (package registry — Go consts CP + core re-export)
+```
+
+Gate: `.gitea/workflows/registry-ssot-drift.yml` (`drift` re-runs the generator
+and `git diff --exit-code`s `gen/`; `conformance` runs
+`tests/test_registry_contract.py` — schema-validates the YAML and asserts the
+load-bearing invariant `prefix == host/owner` plus "both derivation seams carry
+the same prefix"). `gen/` is NEVER hand-edited.
+
+### Switching registries (ECR ↔ GHCR ↔ our own) — ONE value, three seams
+
+All three seams default to `registry.prefix`; override ANY ONE to switch with no
+code edit:
+
+| Seam | Where | How to switch |
+| --- | --- | --- |
+| Runtime (Go) | CP + core `RegistryPrefix()` read env `MOLECULE_IMAGE_REGISTRY` | set the env at deploy (Railway / compose / EC2 user-data) |
+| CI publish | publisher `IMAGE_NAME: ${{ vars.MOLECULE_REGISTRY \|\| '<prefix>' }}/…` | set org/repo Actions var `MOLECULE_REGISTRY` |
+| Baked default | `registry.prefix` in this file | edit `prefix`, `node tools/gen-registry.mjs`, commit |
+
+`switch_examples:` in the YAML lists the canonical prefixes for our registry,
+ECR prod (153263036946), ECR staging (004947743811), and GHCR.
+
+### Dynamic pull-through mirror (off by default)
+
+`mirror.enabled: true` + an `upstreams:` list turns our registry into an
+on-demand proxy-cache of an upstream (the container analogue of the
+source-provider ecosystem) — no explicit mirror-push. Declared here so enabling
+it is a config edit, not a code change.
+
+### Retention
+
+`retention:` declares the keep-N-per-package policy the operator prune enforces
+(`operator-config/ops/registry-retention-prune.sh`): keep at most
+`keep_max_versions` (5) versions per container package, never prune a
+`keep_tags` head (latest / staging-latest / staging) or a **pinned** digest
+(`runtime_image_pins`), always prune untagged. The dormant ECR side keeps its
+own AWS-native lifecycle (`scripts/ops/ensure-ecr-lifecycle.sh`, keep-10).

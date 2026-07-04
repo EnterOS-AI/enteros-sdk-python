@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/contracts/registry.schema.json",
+  "title": "MoleculesAI Container Image Registry SSOT",
+  "description": "SSOT JSON-Schema (draft 2020-12) for contracts/registry.yaml — the single source of truth for the CONTAINER IMAGE REGISTRY every image reference derives from (host/owner/prefix, box auth SHAPE, the runtime env var + CI org var derivation seams, the keep-N retention policy, and the optional dynamic pull-through mirror). Distinct from cloudproviders.yaml (compute backends) and the LLM provider registry. tools/gen-registry.mjs emits gen/registry/registry.env + gen/go/registry/registry.go from the validated instance; .gitea/workflows/registry-ssot-drift.yml pins gen/ to this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "registry", "env_var", "ci_var", "retention"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema/data revision of this contract instance."
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "host", "owner", "prefix", "auth"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "display": { "type": "string", "minLength": 1 },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Bare docker-login registry host (no /owner suffix)."
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Registry namespace/owner path segment."
+        },
+        "prefix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Canonical host[/owner] every image ref formats against. MUST equal '<host>/<owner>'."
+        },
+        "push_host": {
+          "type": "string",
+          "description": "Optional CF-bypass push endpoint (host:port). Empty when pushes go to `host` directly."
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["none", "basic", "ecr-login"] },
+            "username_env": { "type": "string" },
+            "password_env": { "type": "string" },
+            "region": { "type": "string" }
+          }
+        }
+      }
+    },
+    "env_var": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Env var Go runtime consumers (CP + core RegistryPrefix) read to override `prefix`."
+    },
+    "ci_var": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Gitea Actions org/repo variable CI publishers derive IMAGE_NAME from (fallback `prefix`)."
+    },
+    "ci_push_host_var": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Gitea Actions variable overriding `push_host` for CI publishers."
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keep_max_versions"],
+      "properties": {
+        "keep_max_versions": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max versions kept per container package before older ones are pruned."
+        },
+        "keep_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Tag values whose version is never pruned (moving prod/staging heads)."
+        },
+        "pinned_exempt": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, a version whose digest is pinned (pin_source) is never pruned."
+        },
+        "pin_source": {
+          "type": "string",
+          "description": "Table/source of pinned digests (runtime_image_pins)."
+        },
+        "prune_untagged": {
+          "type": "boolean",
+          "default": true,
+          "description": "Untagged/dangling upload versions are always eligible for prune."
+        }
+      }
+    },
+    "mirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "upstreams": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "prefix"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "prefix": { "type": "string", "minLength": 1 },
+              "auth": { "type": "string", "enum": ["none", "basic", "ecr-login"] }
+            }
+          }
+        }
+      }
+    },
+    "switch_examples": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
