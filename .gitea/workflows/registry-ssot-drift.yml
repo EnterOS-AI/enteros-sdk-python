@@ -1,0 +1,58 @@
+# registry-ssot-drift — pins the generated registry bindings to the SSOT.
+#
+# Self-contained (node-only) drift gate for the container-registry SSOT
+# (contracts/registry.yaml). It re-runs tools/gen-registry.mjs and fails if the
+# committed gen/ artifacts differ from a fresh regeneration — gen/ is NEVER
+# hand-edited, so editing contracts/registry.yaml is the only edit that moves
+# the registry everywhere. Kept separate from contracts-codegen-drift.yml so it
+# has zero coupling to the cloudprovider/molcontracts generators.
+name: registry-ssot-drift
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+concurrency:
+  group: registry-ssot-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: registry-ssot-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Regenerate registry bindings from contracts/registry.yaml
+        run: node tools/gen-registry.mjs
+      - name: Fail if committed gen/ differs from a fresh regeneration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- \
+              gen/registry/registry.env \
+              gen/go/registry/registry.go; then
+            echo "::error::registry gen/ is out of date — committed bindings differ"
+            echo "::error::from a fresh run of tools/gen-registry.mjs. gen/ is NEVER"
+            echo "::error::hand-edited. Regenerate with 'node tools/gen-registry.mjs' and commit."
+            exit 1
+          fi
+          echo "registry gen/ is in sync with contracts/registry.yaml (no drift)"
+
+  conformance:
+    name: registry-ssot-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install --no-cache-dir pytest "jsonschema>=4.18" "pyyaml>=6.0"
+      - name: Validate registry SSOT schema + invariants
+        run: python -m pytest tests/test_registry_contract.py -q --noconftest
