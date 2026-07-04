@@ -79,7 +79,7 @@ molecule_plugin/         # Plugin-authoring SDK
 template/               # Reference plugin layout (NOT pip-installable)
   adapters/
     claude_code.py       # AgentskillsAdaptor — one-liner per runtime
-    deepagents.py        # AgentskillsAdaptor — one-liner per runtime
+    crewai.py            # AgentskillsAdaptor — one-liner per runtime
 
 examples/remote-agent/   # Runnable Phase 30.1–30.5 demo
   run.py

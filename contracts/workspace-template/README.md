@@ -13,7 +13,7 @@ per RFC [molecule-core#3285](https://git.moleculesai.app/molecule-ai/molecule-co
 
 - `molecule-ai-workspace-template-claude-code/config.yaml` + `.molecule-ci/scripts/validate-workspace-template.py`
   (required `name`/`runtime`/`template_schema_version`; `runtime` warns if outside the known set
-  `{langgraph, claude-code, crewai, autogen, deepagents, hermes, gemini-cli, openclaw}`).
+  `{claude-code, codex, crewai, google-adk, hermes, openclaw}`).
 - `google-adk`, `seo-agent`, `platform-agent` `config.yaml` for the wider field surface
   (providers, runtime_config, schedules, skills, env).
 

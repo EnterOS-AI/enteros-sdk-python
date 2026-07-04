@@ -20,7 +20,7 @@ The real artifacts and their CI validator:
   `SKILL.md`/`hooks`/`skills`/`rules`).
 - `image-gen/plugin.yaml` (the `privileged` documentation — image-gen is explicitly **not** privileged),
   `gh-identity/plugin.yaml` and `molecule-hitl/plugin.yaml` (the `kind`/`entrypoint` and the
-  `deepagents`/`langgraph`/`autogen` runtimes real plugins already declare).
+  runtimes real plugins declare).
 - `molecule-ai-workspace-runtime/molecule_runtime/plugin_daemons.py` (runtime#216) — the
   parser/supervisor whose accepted entry shape `contributes.daemons` mirrors verbatim
   (`{name, command, args?, env?, cwd?}`; malformed entries are SKIPPED with a warning,
@@ -45,7 +45,6 @@ The real artifacts and their CI validator:
   well-formed shape.
 - **Canonical `runtimes` enum** — the SSOT reconciliation of the cross-artifact runtime
   drift. The **hyphen** form is canonical (`claude-code`, matching the templates); the legacy
-  plugin **underscore** spellings (`claude_code`, `gemini_cli`) are accepted aliases that
-  normalise to the hyphen form. The enum INCLUDES every runtime in use —
-  `claude-code`, `codex`, `hermes`, `openclaw`, `langgraph`, `autogen`, `crewai`, `deepagents`,
-  `gemini-cli`, `google-adk`, `external` — including `deepagents`/`langgraph`/`autogen`.
+  plugin **underscore** spelling (`claude_code`) is an accepted alias that
+  normalises to the hyphen form. The enum is the supported runtime set —
+  `claude-code`, `codex`, `hermes`, `openclaw`, `crewai`, `google-adk`, `external`.
