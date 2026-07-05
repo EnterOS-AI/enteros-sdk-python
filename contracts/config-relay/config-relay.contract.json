@@ -1,0 +1,33 @@
+{
+  "relay_uri_env": "MOLECULE_CONFIG_RELAY_URI",
+  "relay_sha256_env": "MOLECULE_CONFIG_RELAY_SHA256",
+  "relay_ack_token_env": "MOLECULE_CONFIG_RELAY_ACK_TOKEN",
+  "cp_url_env": "MOLECULE_CP_URL",
+  "workspace_id_env": "WORKSPACE_ID",
+  "config_path_env": "WORKSPACE_CONFIG_PATH",
+  "default_config_path": "/configs",
+  "bundle_shape": "json-object: {path: base64(content)}",
+  "path_charset": "^[A-Za-z0-9._/-]+$",
+  "integrity": "sha256",
+  "fail_closed": true,
+  "plugin_drop_prefix": ".relay-plugins",
+  "plugin_declared_scheme": "presign",
+  "plugin_declared_env": "MOLECULE_DECLARED_PLUGINS",
+  "ack": {
+    "method": "POST",
+    "path_template": "/cp/workspaces/{workspace_id}/relay-ack",
+    "auth": "Authorization: Bearer <ack token>",
+    "success_status": 204
+  },
+  "delete_on_ack": true,
+  "producers": [
+    "molecule-controlplane/internal/configrelay#Relay.Stage/InjectEnv/DeleteOnReady",
+    "molecule-controlplane/internal/pluginresolve#Resolver.ResolveDeclared",
+    "molecule-controlplane/internal/handlers/workspace_provision.go#stageConfigRelay/resolvePluginBundle",
+    "molecule-controlplane/internal/handlers/workspace_relay_ack.go#WorkspaceRelayAckHandler.Ack"
+  ],
+  "consumers": [
+    "molecule-ai-workspace-runtime/molecule_runtime/config_relay.py#run_config_relay_prelude",
+    "molecule-ai-workspace-runtime/molecule_runtime/plugin_sources.py#_fetch_presign"
+  ]
+}

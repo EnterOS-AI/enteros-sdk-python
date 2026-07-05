@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/config-relay/config-relay.schema.json",
+  "title": "Transient R2 Config+Plugin Relay Delivery Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the Cloudflare R2 transient config+secret+plugin relay (cf-r2-relay-config-secret-delivery). The control plane stages a freshly-provisioned workspace's {config.yaml + prompts/* + secret files + system-prompt.md} AND its RESOLVED plugin trees as ONE transient R2 object, injects a short-TTL single-object presigned HTTPS GET into the box env, and DELETES the object the moment the box acks provision-ready. The box holds NO durable cloud credential — only the minutes-long presigned URL. This contract pins the box-facing env keys, the bundle wire-shape, the integrity+fail-closed contract, the plugin drop namespace + presign declared-scheme (so config AND plugins ride ONE channel), and the ready-ack endpoint. Producers: CP internal/configrelay (Stage/InjectEnv/DeleteOnReady) + internal/pluginresolve (server-side plugin resolution). Consumers: molecule_runtime.config_relay (fetch/verify/unpack/ack) + molecule_runtime.plugin_sources (presign provider). INVARIANT: the integrity digest is verified fail-closed (a mismatch ABORTS boot) and the object is deleted on ack — a secret bundle never persists.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "relay_uri_env",
+    "relay_sha256_env",
+    "relay_ack_token_env",
+    "cp_url_env",
+    "workspace_id_env",
+    "config_path_env",
+    "default_config_path",
+    "bundle_shape",
+    "integrity",
+    "fail_closed",
+    "plugin_drop_prefix",
+    "plugin_declared_scheme",
+    "plugin_declared_env",
+    "ack",
+    "delete_on_ack",
+    "producers",
+    "consumers"
+  ],
+  "properties": {
+    "relay_uri_env": {
+      "type": "string",
+      "const": "MOLECULE_CONFIG_RELAY_URI",
+      "description": "Env key carrying the short-TTL (~10m) single-object presigned HTTPS GET. Its PRESENCE is the box-side enable gate (no separate runtime flag)."
+    },
+    "relay_sha256_env": {
+      "type": "string",
+      "const": "MOLECULE_CONFIG_RELAY_SHA256",
+      "description": "Env key carrying the sha256 hex of the RAW bundle body. The box verifies before unpack; a mismatch is fail-closed."
+    },
+    "relay_ack_token_env": {
+      "type": "string",
+      "const": "MOLECULE_CONFIG_RELAY_ACK_TOKEN",
+      "description": "Env key carrying the one-time ready-ack bearer. Only sha256(token) is stored server-side."
+    },
+    "cp_url_env": {
+      "type": "string",
+      "const": "MOLECULE_CP_URL",
+      "description": "Existing CP base-URL env the box derives the ack endpoint from (the relay env carries only the token, not a URL)."
+    },
+    "workspace_id_env": {
+      "type": "string",
+      "const": "WORKSPACE_ID"
+    },
+    "config_path_env": {
+      "type": "string",
+      "const": "WORKSPACE_CONFIG_PATH"
+    },
+    "default_config_path": {
+      "type": "string",
+      "const": "/configs"
+    },
+    "bundle_shape": {
+      "type": "string",
+      "const": "json-object: {path: base64(content)}",
+      "description": "The transient object body: a JSON object mapping a config-path-relative path to base64 of its bytes. Marshaled via the SAME provisioner.ValidateAndMarshalConfigBundle path/charset/base64 validation as the legacy Secrets-Manager bundle, so the box has ONE unpack path."
+    },
+    "path_charset": {
+      "type": "string",
+      "const": "^[A-Za-z0-9._/-]+$",
+      "description": "Every bundle path must match this charset and must not escape the config path (no absolute, no ..). Validated on WRITE (CP) and re-validated on UNPACK (box)."
+    },
+    "integrity": {
+      "type": "string",
+      "const": "sha256",
+      "description": "The digest algorithm over the raw bundle body."
+    },
+    "fail_closed": {
+      "type": "boolean",
+      "const": true,
+      "description": "A fetch failure after the retry ceiling OR a sha256 mismatch ABORTS boot (SystemExit) — the box never boots on incomplete/tampered config."
+    },
+    "plugin_drop_prefix": {
+      "type": "string",
+      "const": ".relay-plugins",
+      "description": "Bundle namespace for RESOLVED plugin trees (config-path-relative): .relay-plugins/<name>/<relpath>. Disjoint from config/prompt paths, so a plugin can never shadow a secret. The box unpacks it here; a presign://<name> declared source resolves it from here."
+    },
+    "plugin_declared_scheme": {
+      "type": "string",
+      "const": "presign",
+      "description": "The declared-plugin scheme for a relay-delivered tree: presign://<name>. Resolves to <config_path>/.relay-plugins/<name>/ — NO network, NO box-held plugin credential. A gitea://<owner>/<repo> source the CP could NOT resolve server-side is left verbatim for the box's own fetcher (fail-soft)."
+    },
+    "plugin_declared_env": {
+      "type": "string",
+      "const": "MOLECULE_DECLARED_PLUGINS",
+      "description": "Comma-joined declared-plugin sources. The CP rewrites each source it resolves server-side to presign://<name>; unresolved/non-gitea sources are left verbatim."
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path_template", "auth", "success_status"],
+      "properties": {
+        "method": { "type": "string", "const": "POST" },
+        "path_template": { "type": "string", "const": "/cp/workspaces/{workspace_id}/relay-ack" },
+        "auth": { "type": "string", "const": "Authorization: Bearer <ack token>" },
+        "success_status": { "type": "integer", "const": 204 }
+      },
+      "description": "The provider-agnostic ready-ack the box POSTs once /configs is written and the platform is serving. Best-effort on the box (a permanent ack failure only logs; the CP ReapAbandoned sweep + R2 lifecycle rule are the delete backstops)."
+    },
+    "delete_on_ack": {
+      "type": "boolean",
+      "const": true,
+      "description": "A successful ack DELETES the transient R2 object (idempotent). The secret+config+plugin bundle never persists in the relay."
+    },
+    "producers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "consumers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    }
+  }
+}
