@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/workspace-data/workspace-data.schema.json",
+  "$comment": "contract-version 0.1.0 — initial durable-workspace snapshot/restore contract. Single-sources the R2 snapshot/restore mechanism (controlplane internal/workspacedata + the box userdata systemd timer) as a PROVIDER-AGNOSTIC durability SSOT: the box-facing + CP-side env surface, the persisted-path set, the tar+zstd archive format, the per-workspace object-store key scheme, the presign TTLs, and the snapshot cadence — constants currently duplicated across controlplane Go. Durability rides object storage (Cloudflare R2), NOT per-provider block volumes, so the compute provider (aws/hetzner/gcp/local/molecules-server) is irrelevant to whether /workspace survives instance recreate.",
+  "title": "Durable Workspace Data (Snapshot/Restore) Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the durable-workspace snapshot/restore mechanism. A workspace's durable agent state — everything under `persisted_paths`, INCLUDING the mailbox kernel's /workspace/.molecule — is periodically archived (tar+zstd) to object storage via a presigned PUT and restored via a presigned GET BEFORE the runtime container mounts /workspace, so state survives instance recreate / auto-heal on ANY compute provider. The SDK owns this SHAPE + constants; the snapshot/restore IMPLEMENTATION lives in molecule-controlplane (box userdata timer + workspacedata.Service), and molecule_runtime's durability guard READS the persisted-path + snapshot-URI signals to credit snapshot-durability. This contract owns the PROTOCOL; the per-workspace on/off SELECTOR (`data_persistence`) is owned by provision-request and only cross-referenced here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_layer",
+    "ownership",
+    "enable",
+    "selector",
+    "box_env",
+    "cp_env",
+    "persisted_paths",
+    "excluded_paths",
+    "archive",
+    "key_scheme",
+    "ttls",
+    "cadence",
+    "restore_ordering",
+    "durability_signal",
+    "safety",
+    "open"
+  ],
+  "properties": {
+    "_doc": {
+      "description": "Free-form documentation block (array of prose lines). Not machine-validated.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": { "type": "string", "const": "workspace-data/v1" },
+    "contract_layer": { "type": "string", "const": "workspace-data" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_owner", "implementation_owner", "durability_guard_consumer"],
+      "properties": {
+        "shape_owner": { "type": "string", "const": "molecule-ai-sdk", "description": "Owns the SHAPE + constants (this contract)." },
+        "implementation_owner": { "type": "string", "const": "molecule-controlplane", "description": "Owns the snapshot/restore IMPLEMENTATION: workspacedata.Service (presign + key scheme) + the box userdata systemd timer + restore snippet. No per-runtime reimplementation." },
+        "durability_guard_consumer": { "type": "string", "const": "molecule_runtime", "description": "Reads persisted_paths + box_env.snapshot_uri to credit snapshot-durability in the in-container durability guard (mailbox_dir.verify_durability)." }
+      }
+    },
+    "enable": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The master gate. The mechanism is inert (no URIs injected) until this env is truthy.",
+      "required": ["env", "kind", "truthy", "default_today", "target_default", "default_on_gated_on"],
+      "properties": {
+        "env": { "type": "string", "const": "MOLECULE_WORKSPACE_DATA_PERSIST" },
+        "kind": { "type": "string", "const": "bool" },
+        "truthy": { "type": "array", "items": { "type": "string" }, "const": ["1", "true", "yes", "on"] },
+        "default_today": { "type": "boolean", "const": false, "description": "The CURRENT code default (ships dark). Pinned to the real constant so a drift-gate catches divergence." },
+        "target_default": { "type": "boolean", "const": true, "description": "The intended end-state: R2 snapshot durability ON by default for every provider. Flipping default_today→target_default is a rollout gated on `default_on_gated_on`." },
+        "default_on_gated_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Prerequisites that MUST be met before default_today may become target_default.",
+          "const": [
+            "wire-local-and-aws-providers-to-datapersist",
+            "r2-bucket-policy-denies-box-ecr-principal-cross-prefix-writes",
+            "nightly-e2e-snapshot-restore-proven",
+            "staging-first-then-production"
+          ]
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The per-workspace on/off choice. SSOT lives in provision-request (data_persistence); cross-referenced here so the values are not redefined.",
+      "required": ["env", "owner", "modes", "auto_default"],
+      "properties": {
+        "env": { "type": "string", "const": "MOLECULE_DATA_PERSISTENCE" },
+        "owner": { "type": "string", "const": "provision-request.data_persistence" },
+        "modes": { "type": "array", "items": { "type": "string" }, "const": ["auto", "persist", "ephemeral"] },
+        "auto_default": { "type": "string", "description": "What 'auto' resolves to today: desktop-control ON, others follow the org flag.", "const": "desktop-control-on-else-org-flag" }
+      }
+    },
+    "box_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The ONLY two vars injected onto the box. Presigned single-object URLs — the box never holds object-store credentials (the presign prefix + short expiry are the auth boundary).",
+      "required": ["restore_uri", "snapshot_uri"],
+      "properties": {
+        "restore_uri": { "type": "string", "const": "MOLECULE_WORKSPACE_RESTORE_URI", "description": "Presigned GET of the last snapshot; consumed by the box restore step at boot." },
+        "snapshot_uri": { "type": "string", "const": "MOLECULE_WORKSPACE_SNAPSHOT_URI", "description": "Presigned PUT of the fixed latest key; consumed by the box snapshot timer." }
+      }
+    },
+    "cp_env": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CP-side only (Infisical projection, read by workspacedata service build). NEVER on the wire / never on the box. Any absent → feature nil (off).",
+      "required": ["bucket", "endpoint", "access_key_id", "secret_access_key"],
+      "properties": {
+        "bucket": { "type": "string", "const": "MOLECULE_WORKSPACE_DATA_BUCKET" },
+        "endpoint": { "type": "string", "const": "MOLECULE_WORKSPACE_DATA_ENDPOINT" },
+        "access_key_id": { "type": "string", "const": "MOLECULE_WORKSPACE_DATA_ACCESS_KEY_ID" },
+        "secret_access_key": { "type": "string", "const": "MOLECULE_WORKSPACE_DATA_SECRET_ACCESS_KEY" }
+      }
+    },
+    "persisted_paths": {
+      "type": "array",
+      "description": "The exact set archived + restored. /workspace/.molecule (mailbox kernel state) is covered transitively by /workspace. This is the SSOT the userdata tar path-list renders from and the runtime guard checks its base against.",
+      "items": { "type": "string" },
+      "const": ["/workspace", "/home/agent/.claude"]
+    },
+    "excluded_paths": {
+      "type": "array",
+      "description": "Paths deliberately NOT persisted, with the reason (so nobody 'helpfully' adds them).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": { "path": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "snapshot_pipeline", "restore_pipeline"],
+      "properties": {
+        "format": { "type": "string", "const": "tar+zstd" },
+        "snapshot_pipeline": { "type": "string", "const": "tar -c -C / <relpaths> | zstd | curl PUT <snapshot_uri>" },
+        "restore_pipeline": { "type": "string", "const": "curl GET <restore_uri> | zstd -d | tar -x -C /" }
+      }
+    },
+    "key_scheme": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-workspace object key. v1 keeps ONE last-known-good image overwritten in place (no history — see open.retention).",
+      "required": ["root", "prefix_template", "latest_key_template"],
+      "properties": {
+        "root": { "type": "string", "const": "workspace-data" },
+        "prefix_template": { "type": "string", "const": "workspace-data/{workspace_id}/" },
+        "latest_key_template": { "type": "string", "const": "workspace-data/{workspace_id}/latest.tar.zst" }
+      }
+    },
+    "ttls": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Presign lifetimes (seconds).",
+      "required": ["restore_get_seconds", "snapshot_put_max_seconds", "on_demand_seconds"],
+      "properties": {
+        "restore_get_seconds": { "type": "integer", "const": 1800, "description": "30m — boot restore GET." },
+        "snapshot_put_max_seconds": { "type": "integer", "const": 604800, "description": "7d — the S3 SigV4 presign ceiling; the timer reuses the boot-injected PUT until expiry/recreate." },
+        "on_demand_seconds": { "type": "integer", "const": 900, "description": "15m — on-demand (migration) snapshot-PUT / restore-GET." }
+      }
+    },
+    "cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Box snapshot timer. PERIODIC — state written since the last snapshot is lost on a hard recreate (weaker than a live block volume). See open.durability_note.",
+      "required": ["on_boot_seconds", "on_active_seconds"],
+      "properties": {
+        "on_boot_seconds": { "type": "integer", "const": 600 },
+        "on_active_seconds": { "type": "integer", "const": 600 }
+      }
+    },
+    "restore_ordering": {
+      "type": "string",
+      "const": "restore-before-container-mount",
+      "description": "The restore snippet runs BEFORE `docker run` bind-mounts /workspace, so the container sees restored data. Non-negotiable ordering invariant."
+    },
+    "durability_signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the in-container runtime guard checks to CREDIT snapshot-durability (so it does not false-warn EPHEMERAL on a boot-disk provider whose /workspace is R2-backed).",
+      "required": ["credits_snapshot_durable_when", "disabled_marker"],
+      "properties": {
+        "credits_snapshot_durable_when": {
+          "type": "array",
+          "items": { "type": "string" },
+          "const": [
+            "guard-base-path-is-under-a-persisted_paths-entry",
+            "box_env.snapshot_uri-present-in-env",
+            "no-ws-snapshot-disabled-marker"
+          ]
+        },
+        "disabled_marker": { "type": "string", "const": "/var/lib/molecule/ws-snapshot-disabled", "description": "Dropped by a failed restore; the timer honors it to refuse snapshotting an empty tree over a good backup." }
+      }
+    },
+    "safety": {
+      "type": "array",
+      "description": "Data-loss guards already in the mechanism (pinned so a refactor can't silently drop them).",
+      "items": { "type": "string" },
+      "const": [
+        "partial-archive-never-overwrites-latest-staged-temp-plus-clean-exit-gate",
+        "failed-restore-drops-disabled-marker-so-timer-refuses-empty-over-good-backup"
+      ]
+    },
+    "open": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Known-open edges (P3 / prerequisites). Not shape; documented so consumers and the rollout track them.",
+      "required": ["retention", "gc", "security", "provider_wiring", "durability_note"],
+      "properties": {
+        "retention": { "type": "string", "const": "v1-keeps-only-latest-no-timestamped-history" },
+        "gc": { "type": "string", "const": "no-deprovision-time-snapshot-cleanup-P3" },
+        "security": { "type": "string", "const": "box-carries-broad-ecr-creds-r2-bucket-policy-MUST-deny-cross-prefix-writes-before-default-on" },
+        "provider_wiring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hetzner", "gcp", "local", "aws"],
+          "properties": {
+            "hetzner": { "type": "string", "const": "wired" },
+            "gcp": { "type": "string", "const": "wired" },
+            "local": { "type": "string", "const": "unwired-current-default-backend-needs-work" },
+            "aws": { "type": "string", "const": "ebs-reattach-not-r2-except-migration-restore-target" }
+          }
+        },
+        "durability_note": { "type": "string", "const": "snapshot-durability-is-periodic-bounded-loss-vs-live-block-volume-zero-loss" }
+      }
+    }
+  }
+}
