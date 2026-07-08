@@ -24,7 +24,7 @@ irrelevant. This is why it is provider-agnostic by construction.
 | Block | Load-bearing pins |
 |---|---|
 | `ownership` | shape = this SDK; **implementation = `molecule-controlplane`** (box timer + `workspacedata.Service`); durability-credit consumer = **`molecule_runtime`** |
-| `enable` | master gate `MOLECULE_WORKSPACE_DATA_PERSIST`; `default_today:false` (ships dark) vs `target_default:true`; the flip is **gated** on `default_on_gated_on` (wire local+aws · R2 bucket-policy cross-prefix deny · nightly e2e · staging-first) |
+| `enable` | master gate `MOLECULE_WORKSPACE_DATA_PERSIST`; `default_today:false` (ships dark) vs `target_default:true`; the flip is **gated** on `default_on_gated_on` (wire local+aws · R2 bucket-policy cross-prefix deny · per-merge e2e · staging-first) |
 | `selector` | per-workspace choice `MOLECULE_DATA_PERSISTENCE` — SSOT is **provision-request** (`data_persistence`); only cross-referenced here (protocol vs selector split) |
 | `box_env` | the ONLY two box vars — presigned `MOLECULE_WORKSPACE_{RESTORE,SNAPSHOT}_URI`; the box never holds object-store creds |
 | `cp_env` | CP-side R2 creds (`MOLECULE_WORKSPACE_DATA_{BUCKET,ENDPOINT,ACCESS_KEY_ID,SECRET_ACCESS_KEY}`) — never on the wire |
