@@ -111,6 +111,14 @@ var Contract = MCPPluginDeliveryContract{
 			Renderer:     "mcp_render.render_codex_config",
 			Status:       "implemented",
 		},
+		"gemini_cli": {
+			SettingsPath: "~/.gemini/settings.json",
+			Format:       "json",
+			Key:          "mcpServers",
+			Table:        "",
+			Renderer:     "mcp_render.render_gemini_settings",
+			Status:       "todo-unverified",
+		},
 		"hermes": {
 			SettingsPath: "unverified",
 			Format:       "unverified",

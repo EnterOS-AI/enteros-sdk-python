@@ -37,6 +37,13 @@
       "renderer": "mcp_render.render_codex_config",
       "status": "implemented"
     },
+    "gemini_cli": {
+      "settings_path": "~/.gemini/settings.json",
+      "format": "json",
+      "key": "mcpServers",
+      "renderer": "mcp_render.render_gemini_settings",
+      "status": "todo-unverified"
+    },
     "hermes": {
       "settings_path": "unverified",
       "format": "unverified",
