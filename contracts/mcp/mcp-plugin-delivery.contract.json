@@ -12,9 +12,10 @@
   "consumers": [
     "claude_sdk_executor._load_settings_mcp",
     "platform_agent_identity.mcp_server_present",
+    "mcp_readiness_probe.probe_management_mcp_tools",
     "workspace-server/internal/handlers/registry.go#RCA2970-online-gate"
   ],
-  "descriptor": "runtime-agnostic name->{command,args?,env?}; the plugin is the SSOT for this descriptor (settings-fragment.json is the Claude adapter's rendering of it). The MCP-wiring PORT (InstallContext.register_mcp_server -> BaseAdapter.register_mcp_server_hook) renders the descriptor into the native config the ACTIVE runtime reads.",
+  "descriptor": "runtime-agnostic name->{command,args?,env?}; the plugin is the SSOT for this descriptor. The MCP-wiring PORT (InstallContext.register_mcp_server -> BaseAdapter.register_mcp_server_hook) renders the descriptor into the native config the ACTIVE runtime reads. The per-runtime `runtimes` map pins each native surface; no runtime reads the others' files.",
   "port": {
     "hook": "InstallContext.register_mcp_server",
     "impl": "BaseAdapter.register_mcp_server_hook",
@@ -36,13 +37,6 @@
       "table": "mcp_servers",
       "renderer": "mcp_render.render_codex_config",
       "status": "implemented"
-    },
-    "gemini_cli": {
-      "settings_path": "~/.gemini/settings.json",
-      "format": "json",
-      "key": "mcpServers",
-      "renderer": "mcp_render.render_gemini_settings",
-      "status": "todo-unverified"
     },
     "hermes": {
       "settings_path": "unverified",

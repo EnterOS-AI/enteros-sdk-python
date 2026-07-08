@@ -85,8 +85,8 @@ var Contract = MCPPluginDeliveryContract{
 	RuntimePresentField: "mcp_server_present",
 	Producer:            "MCPServerAdaptor",
 	Consumer:            "claude_sdk_executor._load_settings_mcp",
-	Consumers:           []string{"claude_sdk_executor._load_settings_mcp", "platform_agent_identity.mcp_server_present", "workspace-server/internal/handlers/registry.go#RCA2970-online-gate"},
-	Descriptor:          "runtime-agnostic name->{command,args?,env?}; the plugin is the SSOT for this descriptor (settings-fragment.json is the Claude adapter's rendering of it). The MCP-wiring PORT (InstallContext.register_mcp_server -> BaseAdapter.register_mcp_server_hook) renders the descriptor into the native config the ACTIVE runtime reads.",
+	Consumers:           []string{"claude_sdk_executor._load_settings_mcp", "platform_agent_identity.mcp_server_present", "mcp_readiness_probe.probe_management_mcp_tools", "workspace-server/internal/handlers/registry.go#RCA2970-online-gate"},
+	Descriptor:          "runtime-agnostic name->{command,args?,env?}; the plugin is the SSOT for this descriptor. The MCP-wiring PORT (InstallContext.register_mcp_server -> BaseAdapter.register_mcp_server_hook) renders the descriptor into the native config the ACTIVE runtime reads. The per-runtime `runtimes` map pins each native surface; no runtime reads the others' files.",
 	Port: Port{
 		Hook:            "InstallContext.register_mcp_server",
 		Impl:            "BaseAdapter.register_mcp_server_hook",
@@ -110,14 +110,6 @@ var Contract = MCPPluginDeliveryContract{
 			Table:        "mcp_servers",
 			Renderer:     "mcp_render.render_codex_config",
 			Status:       "implemented",
-		},
-		"gemini_cli": {
-			SettingsPath: "~/.gemini/settings.json",
-			Format:       "json",
-			Key:          "mcpServers",
-			Table:        "",
-			Renderer:     "mcp_render.render_gemini_settings",
-			Status:       "todo-unverified",
 		},
 		"hermes": {
 			SettingsPath: "unverified",
