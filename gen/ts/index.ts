@@ -15,6 +15,14 @@
 // or the per-domain subpaths:
 //   import { RequiredTool } from "@molecule-ai/contracts/contract";
 //   import { RegisterRequest } from "@molecule-ai/contracts/workspace-comms";
+//   import { IdlePromptContribution } from "@molecule-ai/contracts/idle-prompt";
+//
+// The idle-prompt layer is re-exported here (and given a subpath) because its
+// whole purpose is cross-repo consumption by the molecule_runtime assembler —
+// unlike catalog_gen (CP-internal), consumers must be able to import it from
+// the published surface, not private file paths. Generated names are prefixed
+// (IdlePrompt* / IDLE_PROMPT_*) so `export *` cannot collide.
 
 export * from "./contract_gen";
 export * from "./workspace_comms_gen";
+export * from "./idle_prompt_gen";

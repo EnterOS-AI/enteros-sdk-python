@@ -44,7 +44,11 @@ gen/python/cloudproviders.py  gen/python/{contract,workspace_comms,catalog}_gen.
      models (derived from the `workspace-comms/` **schemas** via
      `lib/comms-schema.mjs`),
    - `catalog_gen.*` — the plugin-manifest/workspace-template/org-template
-     manifests + the unified catalog-entry envelope (derived from those schemas).
+     manifests + the unified catalog-entry envelope (derived from those schemas),
+   - `idle_prompt_gen.*` — the consolidated idle-prompt digest contract (task
+     #219: assembler policy surface, contribution envelope, task-queue row,
+     goal-state cadence — derived from the `idle-prompt/` schema; the canonical
+     assembler implementation lives in `molecule_runtime`).
 
 Every generated value is **derived** — no contract value is hardcoded in a
 generator. All three generators are Node `.mjs` scripts, so regeneration and the

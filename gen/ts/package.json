@@ -23,6 +23,10 @@
     "./workspace-comms": {
       "types": "./dist/workspace_comms_gen.d.ts",
       "default": "./dist/workspace_comms_gen.js"
+    },
+    "./idle-prompt": {
+      "types": "./dist/idle_prompt_gen.d.ts",
+      "default": "./dist/idle_prompt_gen.js"
     }
   },
   "files": [
@@ -30,7 +34,8 @@
     "index.ts",
     "contract_gen.ts",
     "workspace_comms_gen.ts",
-    "catalog_gen.ts"
+    "catalog_gen.ts",
+    "idle_prompt_gen.ts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

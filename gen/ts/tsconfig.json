@@ -13,6 +13,6 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["index.ts", "contract_gen.ts", "workspace_comms_gen.ts", "catalog_gen.ts"],
+  "include": ["index.ts", "contract_gen.ts", "workspace_comms_gen.ts", "catalog_gen.ts", "idle_prompt_gen.ts"],
   "exclude": ["node_modules", "dist", "cloudproviders.generated.ts"]
 }

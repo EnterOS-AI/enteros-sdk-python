@@ -110,9 +110,9 @@ jobs:
               gen/go/cloudprovider/cloudprovider.go \
               gen/go/molcontracts \
               gen/ts/cloudproviders.generated.ts \
-              gen/ts/contract_gen.ts gen/ts/workspace_comms_gen.ts gen/ts/catalog_gen.ts \
+              gen/ts/contract_gen.ts gen/ts/workspace_comms_gen.ts gen/ts/catalog_gen.ts gen/ts/idle_prompt_gen.ts \
               gen/python/cloudproviders.py \
-              gen/python/contract_gen.py gen/python/workspace_comms_gen.py gen/python/catalog_gen.py; then
+              gen/python/contract_gen.py gen/python/workspace_comms_gen.py gen/python/catalog_gen.py gen/python/idle_prompt_gen.py; then
             echo "::error::gen/ is out of date — committed generated bindings differ from a fresh"
             echo "::error::run of the generators. gen/ is NEVER hand-edited. Regenerate locally with"
             echo "::error::'node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs'"
