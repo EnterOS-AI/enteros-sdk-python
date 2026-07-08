@@ -35,6 +35,11 @@ gen/python/cloudproviders.py  gen/python/{contract,workspace_comms,catalog}_gen.
    (package `molecule_ai_contracts`):
    - `contract_gen.*` — the mcp plugin-delivery scalars + full `Contract` value
      (derived from the `mcp/` **instance**),
+   - `provision_request_gen.go` — the core→control-plane provision endpoint,
+     ordered field names, and per-field consume metadata (derived from the
+     `provision-request/` **instance**),
+   - `schema_assets_gen.go` — raw schema JSON assets that Go consumers need to
+     compile directly (currently `plugin-manifest.schema.json`),
    - `workspace_comms_gen.*` — the register/heartbeat/a2a/agent-card message
      models (derived from the `workspace-comms/` **schemas** via
      `lib/comms-schema.mjs`),
@@ -56,10 +61,11 @@ node tools/gen-python.mjs    # cloudproviders.py + gen/python/{contract,workspac
 ```
 
 The hand-authored, NON-generated files that also live under `gen/` — the
-`gen/go/{llmwire,tools,doc.go,deps_test.go,go.mod,go.sum}` + `cloudprovider_test.go`,
-the TS package shim `gen/ts/{index.ts,package.json,tsconfig.json}`, and the
-Python package shim `gen/python/{__init__.py,pyproject.toml}` — are outside the
-generators' write paths, so a fresh regen never clobbers them.
+`gen/go/{llmwire,tools,doc.go,deps_test.go,go.mod,go.sum}` +
+`cloudprovider_test.go`, `gen/go/molcontracts/*_test.go`, the TS package shim
+`gen/ts/{index.ts,package.json,tsconfig.json}`, and the Python package shim
+`gen/python/{__init__.py,pyproject.toml}` — are outside the generators' write
+paths, so a fresh regen never clobbers them.
 
 ## CI gate (`.gitea/workflows/contracts-codegen-drift.yml`)
 
