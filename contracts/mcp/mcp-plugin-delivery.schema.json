@@ -122,6 +122,10 @@
             "type": "string",
             "description": "Top-level key under which MCP servers are declared, for JSON-keyed runtimes (e.g. mcpServers). Mutually-typical with `table`."
           },
+          "key_path": {
+            "type": "string",
+            "description": "Dot-separated nested key path under which MCP servers are declared, for runtimes whose native config nests MCP definitions below an object path (e.g. mcp.servers)."
+          },
           "table": {
             "type": "string",
             "description": "TOML table under which MCP servers are declared, for TOML-table runtimes (e.g. mcp_servers). Mutually-typical with `key`."

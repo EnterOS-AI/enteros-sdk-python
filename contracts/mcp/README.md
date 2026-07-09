@@ -85,4 +85,5 @@ The instance carries exactly the fields core's contract has (no invented fields)
   (`mcpServers`) while the TOML runtime (`codex`) carries `table` (`mcp_servers`). Both are
   modeled as optional; the four common fields (`settings_path`, `format`, `renderer`,
   `status`) are required. `settings_path`/`format` may legitimately be the literal string
-  `unverified` for not-yet-verified runtimes (e.g. `hermes`).
+  `unverified` for not-yet-verified runtimes (for example, a future Gemini/ADK
+  renderer before its native config surface is pinned).
