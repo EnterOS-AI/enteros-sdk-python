@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/object-store/object-store.schema.json",
+  "$comment": "contract-version 0.1.0 — initial object-store adapter contract. The provider-agnostic STORAGE ADAPTER surface: the operation set an adapter must satisfy, the backend selector (r2/s3/minio), per-backend addressing, and the DELIVERY MODE (presigned-direct vs platform-proxy) that lets a co-located per-tenant MinIO conform alongside a global presigned R2/S3. Foundation of the object-store contract family: contracts/workspace-data (snapshot protocol), contracts/data-migration, contracts/workspace-migration all consume THIS. Adapters (r2/s3/minio) are swappable behind it — MinIO 'and such' are just adapters.",
+  "title": "Object Store (Storage Adapter) Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the provider-agnostic object-storage adapter layer. Defines WHAT an adapter must implement (the operation set), HOW a backend is selected + addressed, and the DELIVERY MODE by which a workspace box moves bytes to/from the store — the dimension that makes both a global presigned R2/S3 and a co-located per-tenant MinIO first-class adapters. The SDK owns this SHAPE; the adapter implementations live in molecule-controlplane (internal/workspacedata S3Store + the backend selector); higher contracts (workspace-data, data-migration, workspace-migration) build on it. The workspace box NEVER holds object-store credentials — presigned-direct uses a presigned URL, platform-proxy uses the box's existing platform auth.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_layer",
+    "ownership",
+    "operations",
+    "backends",
+    "addressing",
+    "delivery",
+    "config",
+    "creds_boundary"
+  ],
+  "properties": {
+    "_doc": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form documentation lines. Not machine-validated."
+    },
+    "schema_version": { "type": "string", "const": "object-store/v1" },
+    "contract_layer": { "type": "string", "const": "object-store" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_owner", "adapter_owner", "consumers"],
+      "properties": {
+        "shape_owner": { "type": "string", "const": "molecule-ai-sdk" },
+        "adapter_owner": { "type": "string", "const": "molecule-controlplane", "description": "Owns the adapter implementations (S3Store + the r2/s3/minio backend selection)." },
+        "consumers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "const": ["workspace-data", "data-migration", "workspace-migration"],
+          "description": "Contracts that build on this one."
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "description": "The adapter operation set — every backend adapter MUST satisfy these (the ObjectStore/Presigner interface in molecule-controlplane).",
+      "items": { "type": "string" },
+      "const": ["put", "put_with_content_type", "get", "list", "delete", "presign_get", "presign_put"]
+    },
+    "backends": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector_env", "region_env", "default", "enum"],
+      "properties": {
+        "selector_env": { "type": "string", "const": "MOLECULE_OBJECT_STORE_BACKEND" },
+        "region_env": { "type": "string", "const": "MOLECULE_OBJECT_STORE_REGION" },
+        "default": { "type": "string", "const": "r2", "description": "Behavior-preserving default; unknown value → r2." },
+        "enum": { "type": "array", "items": { "type": "string" }, "const": ["r2", "minio", "s3"] }
+      }
+    },
+    "addressing": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-backend S3-client addressing style + region convention (the SigV4 region is required even where the backend ignores it).",
+      "required": ["r2", "minio", "s3"],
+      "properties": {
+        "r2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["style", "region"],
+          "properties": {
+            "style": { "type": "string", "const": "virtual-hosted" },
+            "region": { "type": "string", "const": "auto" }
+          }
+        },
+        "minio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["style", "region"],
+          "properties": {
+            "style": { "type": "string", "const": "path-style", "description": "MinIO needs bucket-in-path unless wildcard DNS is configured (o.UsePathStyle=true)." },
+            "region": { "type": "string", "const": "us-east-1", "description": "Default; overridable via region_env." }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["style", "region"],
+          "properties": {
+            "style": { "type": "string", "const": "virtual-hosted" },
+            "region": { "type": "string", "const": "region_env-or-auto", "description": "A real AWS region from region_env; falls back to auto." }
+          }
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "HOW a workspace box moves bytes to/from the store. This is the adapter dimension that lets a co-located per-tenant MinIO conform without exposing it to the network.",
+      "required": ["modes", "by_backend", "presigned_direct", "platform_proxy"],
+      "properties": {
+        "modes": { "type": "array", "items": { "type": "string" }, "const": ["presigned-direct", "platform-proxy"] },
+        "by_backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Default delivery per backend. R2/S3 are a single GLOBAL store reachable from every box (presigned-direct); a per-tenant MinIO is co-located + loopback-only, so its bytes proxy through the tenant platform.",
+          "required": ["r2", "minio", "s3"],
+          "properties": {
+            "r2": { "type": "string", "const": "presigned-direct" },
+            "minio": { "type": "string", "const": "platform-proxy" },
+            "s3": { "type": "string", "const": "presigned-direct" }
+          }
+        },
+        "presigned_direct": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The box curls a presigned URL the CP minted (the prefix + short TTL are the auth boundary). Requires the store be network-reachable from every box (a global R2/S3).",
+          "required": ["box_env", "auth"],
+          "properties": {
+            "box_env": { "type": "array", "items": { "type": "string" }, "const": ["MOLECULE_WORKSPACE_RESTORE_URI", "MOLECULE_WORKSPACE_SNAPSHOT_URI"] },
+            "auth": { "type": "string", "const": "presigned-url-prefix-plus-ttl" }
+          }
+        },
+        "platform_proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The box streams to/from a tenant-platform route (reachable on the existing :8080 path — private-IP same-cloud, CF-tunnel cross-cloud); the platform reads/writes its OWN loopback MinIO. No new SG rule, no MinIO exposure, works cross-cloud, box stays creds-free (uses its platform auth token). Caveat: bytes transit the platform; cross-cloud rides the CF tunnel size/time limits.",
+          "required": ["reach", "platform_port", "box_creds", "caveat"],
+          "properties": {
+            "reach": { "type": "string", "const": "tenant-platform-8080-existing-path" },
+            "platform_port": { "type": "integer", "const": 8080 },
+            "box_creds": { "type": "string", "const": "existing-platform-auth-token-not-object-store-creds" },
+            "caveat": { "type": "string", "const": "bytes-transit-platform-cross-cloud-cf-tunnel-size-time-limits" }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "CP-side endpoint/creds env (an Infisical projection); NEVER on the wire / never on the box. Per-usage keys with a fallback chain onto the workspace-data values so one endpoint+cred pair backs all three subsystems (only bucket names differ).",
+      "required": ["workspace_data", "config_relay", "image_gen", "fallback"],
+      "properties": {
+        "workspace_data": { "type": "array", "items": { "type": "string" }, "const": ["MOLECULE_WORKSPACE_DATA_ENDPOINT", "MOLECULE_WORKSPACE_DATA_ACCESS_KEY_ID", "MOLECULE_WORKSPACE_DATA_SECRET_ACCESS_KEY", "MOLECULE_WORKSPACE_DATA_BUCKET"] },
+        "config_relay": { "type": "array", "items": { "type": "string" }, "const": ["MOLECULE_CONFIG_RELAY_ENDPOINT", "MOLECULE_CONFIG_RELAY_ACCESS_KEY_ID", "MOLECULE_CONFIG_RELAY_SECRET_ACCESS_KEY", "MOLECULE_CONFIG_RELAY_BUCKET"] },
+        "image_gen": { "type": "array", "items": { "type": "string" }, "const": ["MOLECULE_IMAGE_GEN_ENDPOINT", "MOLECULE_IMAGE_GEN_ACCESS_KEY_ID", "MOLECULE_IMAGE_GEN_SECRET_ACCESS_KEY", "MOLECULE_IMAGE_GEN_BUCKET"] },
+        "fallback": { "type": "string", "const": "config_relay+image_gen-endpoint+creds-fall-back-to-workspace_data", "description": "The relay + image-gen endpoint/creds default to the workspace_data values; only bucket differs." }
+      }
+    },
+    "creds_boundary": {
+      "type": "string",
+      "const": "workspace-box-never-holds-object-store-creds",
+      "description": "The load-bearing security invariant across BOTH delivery modes: presigned-direct → box holds only a short-lived presigned URL; platform-proxy → box holds only its existing platform auth token. Object-store credentials live CP-side / platform-side only. (This is why per-tenant MinIO removes the cross-prefix R2 bucket-policy prerequisite — the box's ECR principal never has standing on any store.)"
+    }
+  }
+}

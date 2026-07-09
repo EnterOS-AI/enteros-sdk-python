@@ -1,0 +1,56 @@
+{
+  "schema_version": "object-store/v1",
+  "contract_layer": "object-store",
+  "_doc": [
+    "Provider-agnostic object-storage adapter layer — the foundation of the",
+    "object-store contract family. Adapters (r2 / s3 / minio) are swappable behind",
+    "one operation set; MinIO 'and such' are just adapters. The DELIVERY MODE is the",
+    "adapter dimension that lets a global presigned R2/S3 (presigned-direct) and a",
+    "co-located per-tenant MinIO (platform-proxy, reusing the tenant :8080 path) both",
+    "conform without special-casing. contracts/workspace-data (snapshot),",
+    "contracts/data-migration, contracts/workspace-migration all build on this.",
+    "The workspace box never holds object-store credentials in either mode."
+  ],
+  "ownership": {
+    "shape_owner": "molecule-ai-sdk",
+    "adapter_owner": "molecule-controlplane",
+    "consumers": ["workspace-data", "data-migration", "workspace-migration"]
+  },
+  "operations": ["put", "put_with_content_type", "get", "list", "delete", "presign_get", "presign_put"],
+  "backends": {
+    "selector_env": "MOLECULE_OBJECT_STORE_BACKEND",
+    "region_env": "MOLECULE_OBJECT_STORE_REGION",
+    "default": "r2",
+    "enum": ["r2", "minio", "s3"]
+  },
+  "addressing": {
+    "r2": { "style": "virtual-hosted", "region": "auto" },
+    "minio": { "style": "path-style", "region": "us-east-1" },
+    "s3": { "style": "virtual-hosted", "region": "region_env-or-auto" }
+  },
+  "delivery": {
+    "modes": ["presigned-direct", "platform-proxy"],
+    "by_backend": {
+      "r2": "presigned-direct",
+      "minio": "platform-proxy",
+      "s3": "presigned-direct"
+    },
+    "presigned_direct": {
+      "box_env": ["MOLECULE_WORKSPACE_RESTORE_URI", "MOLECULE_WORKSPACE_SNAPSHOT_URI"],
+      "auth": "presigned-url-prefix-plus-ttl"
+    },
+    "platform_proxy": {
+      "reach": "tenant-platform-8080-existing-path",
+      "platform_port": 8080,
+      "box_creds": "existing-platform-auth-token-not-object-store-creds",
+      "caveat": "bytes-transit-platform-cross-cloud-cf-tunnel-size-time-limits"
+    }
+  },
+  "config": {
+    "workspace_data": ["MOLECULE_WORKSPACE_DATA_ENDPOINT", "MOLECULE_WORKSPACE_DATA_ACCESS_KEY_ID", "MOLECULE_WORKSPACE_DATA_SECRET_ACCESS_KEY", "MOLECULE_WORKSPACE_DATA_BUCKET"],
+    "config_relay": ["MOLECULE_CONFIG_RELAY_ENDPOINT", "MOLECULE_CONFIG_RELAY_ACCESS_KEY_ID", "MOLECULE_CONFIG_RELAY_SECRET_ACCESS_KEY", "MOLECULE_CONFIG_RELAY_BUCKET"],
+    "image_gen": ["MOLECULE_IMAGE_GEN_ENDPOINT", "MOLECULE_IMAGE_GEN_ACCESS_KEY_ID", "MOLECULE_IMAGE_GEN_SECRET_ACCESS_KEY", "MOLECULE_IMAGE_GEN_BUCKET"],
+    "fallback": "config_relay+image_gen-endpoint+creds-fall-back-to-workspace_data"
+  },
+  "creds_boundary": "workspace-box-never-holds-object-store-creds"
+}
