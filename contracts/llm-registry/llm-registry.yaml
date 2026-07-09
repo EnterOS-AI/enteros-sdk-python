@@ -981,13 +981,19 @@ runtimes:
       # the SHARED upstream vendors (anthropic/claude-*, gemini/*, openai/*,
       # minimax/*) NOW resolve to these tenant-key BYOK-vendor providers — NOT
       # the platform-shared `platform` provider (which would bill the platform's
-      # key). NAME-ONLY (no models) → no platform-menu change, prefix-routing
-      # only, BYOK-billed. This converts the last 12 hermes residual ids from
-      # cp#529 drift to routable.
+      # key). MiniMax lists concrete colon-form ids for the self-host dropdown;
+      # slash-form minimax/* remains platform-managed above. Other BYOK arms stay
+      # name-only (prefix-routing only). This converts the last hermes residual
+      # ids from cp#529 drift to routable while preserving platform-billed
+      # minimax/MiniMax-* parity.
       - name: byok-anthropic
       - name: byok-gemini
       - name: byok-openai
       - name: byok-minimax
+        models:
+          - minimax:MiniMax-M2.7
+          - minimax:MiniMax-M2.7-highspeed
+          - minimax:MiniMax-M3
 
   # codex: OpenAI — BYOK split across TWO native providers
   # (openai-subscription + openai-api), mirroring claude-code's anthropic

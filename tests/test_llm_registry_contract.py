@@ -125,6 +125,23 @@ def test_openclaw_self_host_byok_minimax_is_selectable():
     assert "minimax/MiniMax-M2.7" in platform_models
 
 
+def test_hermes_self_host_byok_minimax_is_selectable():
+    """Hermes supports MiniMax directly: colon-form ids are BYOK-selectable,
+    while slash-form MiniMax remains platform-managed."""
+    hermes_refs = {
+        ref["name"]: ref for ref in _load_yaml()["runtimes"]["hermes"]["providers"]
+    }
+
+    byok_models = hermes_refs["byok-minimax"].get("models") or []
+    platform_models = hermes_refs["platform"].get("models") or []
+
+    assert "minimax:MiniMax-M2.7" in byok_models
+    assert "minimax:MiniMax-M2.7-highspeed" in byok_models
+    assert "minimax:MiniMax-M3" in byok_models
+    assert "minimax/MiniMax-M2.7" not in byok_models
+    assert "minimax/MiniMax-M2.7" in platform_models
+
+
 def test_gen_embed_is_byte_identical_to_source():
     """The Go embed copy must equal the contracts source verbatim — the drift
     gate re-runs the generator, but this pins it hermetically in the test suite
