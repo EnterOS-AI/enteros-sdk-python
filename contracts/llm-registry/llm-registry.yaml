@@ -1113,11 +1113,16 @@ runtimes:
       # DEDICATED BYOK-VENDOR arms (cp#529): openclaw's default model is
       # `minimax:MiniMax-M2.7`, plus it offers `openai:*` and `groq:*` BYOK ids.
       # These NOW resolve to the tenant-key BYOK-vendor providers (NOT the
-      # platform key). NAME-ONLY → prefix-routing only, BYOK-billed. This converts
-      # the last 7 openclaw residual ids from cp#529 drift to routable AND makes
-      # the runtime's DEFAULT model (minimax:MiniMax-M2.7) resolve.
+      # platform key). MiniMax lists the concrete colon-form ids the self-host
+      # onboarding dropdown can select; the other BYOK arms stay name-only for
+      # prefix-routing only. This converts the openclaw residual ids from cp#529
+      # drift to routable AND makes the runtime's DEFAULT model
+      # (minimax:MiniMax-M2.7) selectable on self-host.
       - name: byok-openai
       - name: byok-minimax
+        models:
+          - minimax:MiniMax-M2.7
+          - minimax:MiniMax-M2.7-highspeed
       - name: groq
 
 
