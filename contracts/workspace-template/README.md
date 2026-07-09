@@ -13,13 +13,13 @@ per RFC [molecule-core#3285](https://git.moleculesai.app/molecule-ai/molecule-co
 
 - `molecule-ai-workspace-template-claude-code/config.yaml` + `.molecule-ci/scripts/validate-workspace-template.py`
   (required `name`/`runtime`/`template_schema_version`; `runtime` warns if outside the known set
-  `{claude-code, codex, crewai, google-adk, hermes, openclaw}`).
-- `google-adk`, `seo-agent`, `platform-agent` `config.yaml` for the wider field surface
+  `{claude-code, codex, crewai, hermes, openclaw}`).
+- `seo-agent`, `platform-agent` `config.yaml` for the wider field surface
   (providers, runtime_config, schedules, skills, env).
 
 ## Deliberately tolerant
 
-The real configs are **shape-inconsistent about where the model lives** — `google-adk` has
+The real configs are **shape-inconsistent about where the model lives** — some templates have
 top-level `models[]` + `runtime_config.model`; `claude-code`/`seo-agent` have
 `runtime_config.models[]` + top-level `model`; `platform-agent` has a top-level `provider`;
 some have none. This schema models every observed location WITHOUT forcing one

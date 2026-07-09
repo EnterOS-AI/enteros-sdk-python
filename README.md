@@ -207,7 +207,7 @@ platform registry (path #1) so it survives upstream breakage.
 
 The canonical runtime list is the SSOT enum in
 `contracts/plugin-manifest/plugin-manifest.schema.json`: `claude-code`, `codex`,
-`hermes`, `openclaw`, `crewai`, `google-adk`, `external` (the underscore alias
+`hermes`, `openclaw`, `crewai`, `external` (the underscore alias
 `claude_code` is accepted). See the live list with `curl $PLATFORM_URL/plugins`.
 
 ## Build and test

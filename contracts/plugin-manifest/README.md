@@ -47,4 +47,4 @@ The real artifacts and their CI validator:
   drift. The **hyphen** form is canonical (`claude-code`, matching the templates); the legacy
   plugin **underscore** spelling (`claude_code`) is an accepted alias that
   normalises to the hyphen form. The enum is the supported runtime set —
-  `claude-code`, `codex`, `hermes`, `openclaw`, `crewai`, `google-adk`, `external`.
+  `claude-code`, `codex`, `hermes`, `openclaw`, `crewai`, `external`.
