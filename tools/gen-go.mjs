@@ -420,6 +420,7 @@ const PORT_FIELDS = [
 ];
 const RUNTIME_FIELDS = [
   ["SettingsPath", "settings_path"], ["Format", "format"], ["Key", "key"],
+  ["KeyPath", "key_path"],
   ["Table", "table"], ["Renderer", "renderer"], ["Status", "status"],
 ];
 
@@ -475,7 +476,7 @@ L.push("");
 L.push("// Runtime is a single runtime's native MCP-config delivery surface.");
 L.push("type Runtime struct {");
 aligned(RUNTIME_FIELDS.map(([g, k]) => {
-  const tag = (k === "key" || k === "table") ? `${k},omitempty` : k;
+  const tag = (k === "key" || k === "key_path" || k === "table") ? `${k},omitempty` : k;
   return [g, `string \`json:${lit(tag)}\``];
 })).forEach((r) => L.push(`\t${r}`));
 L.push("}");

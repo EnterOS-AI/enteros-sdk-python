@@ -9,7 +9,7 @@
   "engines": {
     "molecule": "^1.0"
   },
-  "runtimes": ["claude-code", "codex", "hermes"],
+  "runtimes": ["claude-code", "codex", "hermes", "openclaw"],
   "privileged": true,
   "sha256": "3f9c1b7a2e4d6058a1c3e5f70b9d2a463f9c1b7a2e4d6058a1c3e5f70b9d2a46",
   "contributes": {

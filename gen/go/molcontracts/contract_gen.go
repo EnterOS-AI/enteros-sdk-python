@@ -49,6 +49,7 @@ type Runtime struct {
 	SettingsPath string `json:"settings_path"`
 	Format       string `json:"format"`
 	Key          string `json:"key,omitempty"`
+	KeyPath      string `json:"key_path,omitempty"`
 	Table        string `json:"table,omitempty"`
 	Renderer     string `json:"renderer"`
 	Status       string `json:"status"`
@@ -99,6 +100,7 @@ var Contract = MCPPluginDeliveryContract{
 			SettingsPath: "/configs/.claude/settings.json",
 			Format:       "json",
 			Key:          "mcpServers",
+			KeyPath:      "",
 			Table:        "",
 			Renderer:     "mcp_render.render_claude_settings",
 			Status:       "implemented",
@@ -107,17 +109,28 @@ var Contract = MCPPluginDeliveryContract{
 			SettingsPath: "~/.codex/config.toml",
 			Format:       "toml",
 			Key:          "",
+			KeyPath:      "",
 			Table:        "mcp_servers",
 			Renderer:     "mcp_render.render_codex_config",
 			Status:       "implemented",
 		},
 		"hermes": {
-			SettingsPath: "unverified",
-			Format:       "unverified",
-			Key:          "",
+			SettingsPath: "~/.hermes/config.yaml",
+			Format:       "yaml",
+			Key:          "mcp_servers",
+			KeyPath:      "",
 			Table:        "",
 			Renderer:     "mcp_render.render_hermes_config",
-			Status:       "todo-unverified",
+			Status:       "implemented",
+		},
+		"openclaw": {
+			SettingsPath: "~/.openclaw/openclaw.json",
+			Format:       "json",
+			Key:          "",
+			KeyPath:      "mcp.servers",
+			Table:        "",
+			Renderer:     "mcp_render.render_openclaw_config",
+			Status:       "implemented",
 		},
 	},
 }
