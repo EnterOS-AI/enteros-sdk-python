@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/data-migration/data-migration.schema.json",
+  "$comment": "contract-version 0.1.0 — store-to-store object re-homing. Moves a workspace's objects between two object-store BACKENDS (e.g. the global R2 -> a tenant's own MinIO) with the COMPUTE fixed. The inverse of workspace-migration (which moves compute with the store fixed). A sub-contract of the object-store family: CONSUMES contracts/object-store (the Backend pair + the operation set) + contracts/workspace-data (the key scheme + persisted set). The copy/verify/cutover orchestration is NET-NEW — the ObjectStore seam has List/Get/Put/Delete but no Copy, no store-pair, no checksum/resume today; this contract governs that net-new protocol.",
+  "title": "Data Migration (Store-to-Store Object Re-home) Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for re-homing a workspace's persisted objects from one object-store backend to another — the operation the R2->per-tenant-MinIO swap needs. Compute stays put; the store is re-homed. Per workspace it copies the keys under the workspace-data prefix (latest.tar.zst; later image-gen blobs + attachments) from a SOURCE backend to a TARGET backend over the object-store operation set, verifies, and cuts the tenant's endpoint over only after verification. The SDK owns this SHAPE + the state machine + the copy/verify invariants; the implementation is net-new in molecule-controlplane. Reuses the object-store/workspace-data constants (key scheme, Backend enum, persisted paths) rather than redefining them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_layer", "ownership", "operation", "direction", "scope", "states", "protocol", "invariants", "reuses", "status"],
+  "properties": {
+    "_doc": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "data-migration/v1" },
+    "contract_layer": { "type": "string", "const": "data-migration" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_owner", "implementation_owner", "builds_on"],
+      "properties": {
+        "shape_owner": { "type": "string", "const": "molecule-ai-sdk" },
+        "implementation_owner": { "type": "string", "const": "molecule-controlplane" },
+        "builds_on": { "type": "array", "items": { "type": "string" }, "const": ["object-store", "workspace-data"] }
+      }
+    },
+    "operation": { "type": "string", "const": "store-to-store-object-rehome", "description": "Re-home objects between backends; compute is fixed. Inverse of workspace-migration." },
+    "direction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A backend PAIR from object-store's Backend enum. The canonical case is r2 -> minio (the per-tenant MinIO adoption).",
+      "required": ["source_backend_from", "target_backend_from", "canonical"],
+      "properties": {
+        "source_backend_from": { "type": "string", "const": "object-store.backends.enum" },
+        "target_backend_from": { "type": "string", "const": "object-store.backends.enum" },
+        "canonical": { "type": "string", "const": "r2->minio" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What moves, per workspace. v1 = the snapshot; later phases add image-gen blobs + attachments (each its own bucket/prefix).",
+      "required": ["unit", "v1_keys", "later"],
+      "properties": {
+        "unit": { "type": "string", "const": "per-workspace" },
+        "v1_keys": { "type": "array", "items": { "type": "string" }, "const": ["workspace-data/{workspace_id}/latest.tar.zst"] },
+        "later": { "type": "array", "items": { "type": "string" }, "const": ["image-gen-blobs", "attachments"] }
+      }
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mirrors workspace-migration's shape (a state machine + terminal set) so the two migration contracts are consistent.",
+      "required": ["sequence", "terminal"],
+      "properties": {
+        "sequence": { "type": "array", "items": { "type": "string" }, "const": ["pending", "copying", "verifying", "cutover", "done"] },
+        "terminal": { "type": "array", "items": { "type": "string" }, "const": ["done", "failed"] }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The net-new copy/verify/cutover protocol over the object-store operation set.",
+      "required": ["copy", "manifest_unit", "resume", "verify", "cutover"],
+      "properties": {
+        "copy": { "type": "string", "const": "get-source-then-put-target-over-object-store-ops", "description": "No native Copy on the seam; compose List(source prefix)->Get each->Put target." },
+        "manifest_unit": { "type": "string", "const": "object-key-size_bytes-created_at", "description": "The ObjectStore List item {Key,SizeBytes,CreatedAt} is the manifest/diff unit." },
+        "resume": { "type": "string", "const": "idempotent-list-diff-by-key-and-size-skip-already-copied" },
+        "verify": { "type": "string", "const": "per-object-checksum-plus-size-match-before-cutover" },
+        "cutover": { "type": "string", "const": "flip-tenant-endpoint-only-after-verify-source-retained-until-then" }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "items": { "type": "string" },
+      "const": [
+        "verify-before-cutover-no-endpoint-flip-until-every-object-verified",
+        "idempotent-resume-partial-copy-safe-to-rerun",
+        "source-retained-until-verified-cutover-no-delete-source-on-the-happy-path"
+      ]
+    },
+    "reuses": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Constants owned by object-store/workspace-data — referenced, NOT redefined (single source).",
+      "required": ["key_root", "key_templates", "persisted_paths", "backend_enum"],
+      "properties": {
+        "key_root": { "type": "string", "const": "workspace-data (workspace-data.key_scheme.root)" },
+        "key_templates": { "type": "string", "const": "workspace-data.key_scheme.{prefix_template,latest_key_template}" },
+        "persisted_paths": { "type": "string", "const": "workspace-data.persisted_paths" },
+        "backend_enum": { "type": "string", "const": "object-store.backends.enum" }
+      }
+    },
+    "status": { "type": "string", "const": "net-new-orchestration-not-yet-implemented", "description": "The copy/verify/resume/cutover orchestration + a Copy primitive do not exist today; this contract is the SSOT the implementation will conform to." }
+  }
+}
