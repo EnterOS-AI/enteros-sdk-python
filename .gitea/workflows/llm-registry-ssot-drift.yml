@@ -1,0 +1,58 @@
+# llm-registry-ssot-drift — pins the LLM-registry Go embed to the SSOT.
+#
+# Self-contained drift gate for the LLM provider/model/runtime registry
+# (contracts/llm-registry/llm-registry.yaml). It re-runs
+# tools/gen-llm-registry.mjs and fails if the committed
+# gen/go/llmregistry/llm-registry.yaml embed copy differs from a fresh
+# regeneration — the embed is NEVER hand-edited, so editing the contracts SSOT
+# is the only edit that moves the registry everywhere (molecule-core embeds it
+# via go.moleculesai.app/sdk/gen/go/llmregistry). Kept separate from the other
+# drift gates so it has zero coupling to their generators.
+name: llm-registry-ssot-drift
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+concurrency:
+  group: llm-registry-ssot-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: llm-registry-ssot-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Regenerate the Go embed from contracts/llm-registry/llm-registry.yaml
+        run: node tools/gen-llm-registry.mjs
+      - name: Fail if committed gen/ differs from a fresh regeneration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- gen/go/llmregistry/llm-registry.yaml; then
+            echo "::error::llm-registry embed is out of date — gen/go/llmregistry/llm-registry.yaml"
+            echo "::error::differs from a fresh run of tools/gen-llm-registry.mjs. The embed is"
+            echo "::error::NEVER hand-edited. Regenerate with 'node tools/gen-llm-registry.mjs' and commit."
+            exit 1
+          fi
+          echo "llm-registry embed is in sync with contracts/llm-registry/llm-registry.yaml (no drift)"
+
+  conformance:
+    name: llm-registry-ssot-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install --no-cache-dir pytest "jsonschema>=4.18" "pyyaml>=6.0"
+      - name: Validate LLM-registry SSOT schema + invariants
+        run: python -m pytest tests/test_llm_registry_contract.py -q --noconftest

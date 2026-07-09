@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/contracts/llm-registry/llm-registry.schema.json",
+  "title": "MoleculesAI LLM Provider/Model/Runtime Registry SSOT",
+  "description": "SSOT JSON-Schema (draft 2020-12) for contracts/llm-registry/llm-registry.yaml — the single source of truth for the LLM PROVIDER catalog (vendors, base-URL templates, auth-env names, model-prefix regexes) and the per-runtime NATIVE MATRIX (RFC #340: which providers + exact model ids each runtime natively supports). molecule-core embeds this via go.moleculesai.app/sdk/gen/go/llmregistry; runtimes INHERIT their offering from the per-runtime matrix and pick from it, while each adapter OWNS how it translates a picked model to its runtime's API. Distinct from cloudproviders.yaml (compute backends) and registry.yaml (container image registry). tools/gen-llm-registry.mjs copies the validated instance to gen/go/llmregistry/llm-registry.yaml; .gitea/workflows/llm-registry-ssot-drift.yml pins gen/ to this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "providers", "runtimes"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema/data revision. The Go/consumer loaders fail closed on a mismatch."
+    },
+    "providers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The full provider catalog. Every runtimes[].providers[].name MUST reference a name here.",
+      "items": { "$ref": "#/$defs/provider" }
+    },
+    "runtimes": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "runtime-name -> native support set (RFC #340). A runtime supports a SUBSET of the catalog, not the whole thing.",
+      "additionalProperties": { "$ref": "#/$defs/runtimeNativeSet" }
+    }
+  },
+  "$defs": {
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable catalog key (intended to align with llm_price_catalog.provider). Unique across the catalog."
+        },
+        "display_name": { "type": "string", "description": "Canvas dropdown label." },
+        "vendor_logo": { "type": "string", "description": "Canvas asset key." },
+        "protocol": {
+          "type": "string",
+          "enum": ["openai", "anthropic"],
+          "description": "Proxy wire format."
+        },
+        "auth_mode": {
+          "type": "string",
+          "minLength": 1,
+          "description": "e.g. anthropic_api | oauth | third_party_anthropic_compat | openai_compat_responses | wif_adc."
+        },
+        "base_url_template": {
+          "type": ["string", "null"],
+          "description": "openai-protocol base URL (may use {var} placeholders resolved from endpoint_vars). Empty = SDK/CLI default."
+        },
+        "base_url_anthropic": {
+          "type": ["string", "null"],
+          "description": "anthropic-protocol base URL where the provider exposes one."
+        },
+        "auth_env": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Env var NAMES accepted (never values); any one set satisfies auth."
+        },
+        "auth_token_env": {
+          "type": "string",
+          "description": "Env var the adapter projects the vendor key into (defaults ANTHROPIC_AUTH_TOKEN when empty)."
+        },
+        "model_prefix_match": {
+          "type": "string",
+          "description": "RE2 regex unifying the proxy prefixes, canvas patterns, and adapter model_prefixes."
+        },
+        "model_aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Canvas shortcut ids (e.g. sonnet/opus/haiku)."
+        },
+        "thinking_policy": {
+          "type": "string",
+          "description": "Per-model request-shaping fact (e.g. require_enabled) consumers apply when dialing this entry."
+        },
+        "upstream_vendor": {
+          "type": "string",
+          "description": "Proxy upstream-vendor key {openai|moonshot|anthropic|minimax}; set only on routed entries."
+        },
+        "wire_model_prefix": {
+          "type": "string",
+          "description": "Prefix the proxy rewrites onto the wire model id for this upstream."
+        },
+        "endpoint_vars": {
+          "type": "object",
+          "description": "Named template vars interpolated into base_url_*; each resolves from an env var with a default.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["env"],
+            "properties": {
+              "env": { "type": "string", "minLength": 1 },
+              "default": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "runtimeNativeSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providers"],
+      "properties": {
+        "display_name": { "type": "string", "description": "Human label for the runtime picker." },
+        "providers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "References a providers[].name. Load fails closed if it does not resolve."
+              },
+              "models": {
+                "type": ["array", "null"],
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Exact model ids this runtime exposes for the provider (null/empty allowed only for name-only BYOK prefix-routing arms)."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
