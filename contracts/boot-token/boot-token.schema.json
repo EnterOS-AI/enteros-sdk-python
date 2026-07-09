@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/boot-token/boot-token.schema.json",
+  "$comment": "contract-version 0.1.0 — the scoped, pre-register workspace boot token (WS-A). A workspace box needs a credential for its PRE-register operations (boot-event phone-home; object-store platform-proxy restore-on-boot) BEFORE it holds a per-workspace token (minted by the platform at /registry/register, which runs only after the container starts). The founder ruling (2026-07-08) is that an ordinary workspace box must NOT carry the tenant admin_token; this token replaces it for those two narrow, per-workspace, expiring purposes. It is an OPAQUE stateless HMAC bearer keyed on the per-tenant admin_token (used as the HMAC key ONLY, never transmitted) so it conveys no admin power. The CP mints it; the CP (boot-event) and molecule-core (restore route) verify it offline against the same per-tenant key. This contract is the SSOT for the wire shape so the two verifiers cannot drift from the minter — the test_vectors pin the exact bytes.",
+  "title": "Workspace Boot Token Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the WS-A scoped boot token. Defines the token construction (HMAC-SHA256 over a base64url payload), the claims, the HMAC key source, the env var it is delivered in, the allowed scopes, and golden test vectors both the minter and every verifier must reproduce. The SDK owns this SHAPE; the mint/verify code lives in molecule-controlplane (internal/boottoken) and molecule-core (workspace-server, the restore-route verifier). Relationship to the object-store family: this is the credential the object-store platform-proxy restore (contracts/object-store delivery mode) authenticates with — see the restore scope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_layer",
+    "ownership",
+    "construction",
+    "claims",
+    "key",
+    "env",
+    "scopes",
+    "test_vectors"
+  ],
+  "properties": {
+    "_doc": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form documentation lines. Not machine-validated."
+    },
+    "schema_version": { "type": "string", "const": "boot-token/v1" },
+    "contract_layer": { "type": "string", "const": "boot-token" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_owner", "minter", "verifiers"],
+      "properties": {
+        "shape_owner": { "type": "string", "const": "molecule-ai-sdk" },
+        "minter": { "type": "string", "const": "molecule-controlplane", "description": "Mints the token at workspace provision (internal/boottoken.Mint)." },
+        "verifiers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "const": ["molecule-controlplane", "molecule-core"],
+          "description": "CP verifies for /cp/tenants/boot-event; molecule-core verifies for the object-store restore-on-boot route."
+        }
+      }
+    },
+    "construction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "algorithm", "signing_input", "encoding", "payload_encoding"],
+      "properties": {
+        "format": { "type": "string", "const": "base64url(payload_json) + \".\" + base64url(sig)" },
+        "algorithm": { "type": "string", "const": "HMAC-SHA256" },
+        "signing_input": { "type": "string", "const": "the base64url-encoded payload string (the part before the dot)" },
+        "encoding": { "type": "string", "const": "base64url, RFC 4648 §5, no padding" },
+        "payload_encoding": { "type": "string", "const": "compact UTF-8 JSON of the claims object, fields in the order wsid, org, exp, scope" }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wsid", "org", "exp", "scope"],
+      "description": "The signed payload fields (JSON keys are the wire names).",
+      "properties": {
+        "wsid": { "type": "string", "const": "workspace id the token is bound to" },
+        "org": { "type": "string", "const": "org id the token is bound to (must match the presented org header on boot-event)" },
+        "exp": { "type": "string", "const": "expiry, unix seconds; verifier rejects when now > exp" },
+        "scope": { "type": "string", "const": "array of granted scopes (see scopes)" }
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "cp_column", "platform_env", "transmitted"],
+      "properties": {
+        "source": { "type": "string", "const": "per-tenant admin_token" },
+        "cp_column": { "type": "string", "const": "org_instances.admin_token" },
+        "platform_env": { "type": "string", "const": "ADMIN_TOKEN", "description": "The tenant platform box holds the same key here; molecule-core verifies against it." },
+        "transmitted": { "type": "boolean", "const": false, "description": "The key is used as the HMAC key ONLY and is never sent to the box — so the token conveys no admin power." }
+      }
+    },
+    "env": { "type": "string", "const": "MOLECULE_BOOT_TOKEN", "description": "The env var the CP injects the minted token into on the workspace box." },
+    "scopes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "const": ["boot-event", "restore"],
+      "description": "boot-event → POST /cp/tenants/boot-event; restore → the object-store platform-proxy restore-on-boot route in molecule-core. A verifier MUST scope-check for its route."
+    },
+    "ttl_seconds_default": {
+      "type": "integer",
+      "const": 604800,
+      "description": "Default lifetime (7d). Re-minted every provision; covers first-boot + retries + a slow restore. Scope, not lifetime, is the primary control."
+    },
+    "test_vectors": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Golden vectors both the minter and every verifier reproduce byte-for-byte (the anti-drift anchor). Each: an HMAC key, the exact token, and the decoded claims Verify must return.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "key", "token", "expect_claims"],
+        "properties": {
+          "name": { "type": "string" },
+          "key": { "type": "string", "description": "The HMAC key (a stand-in for a per-tenant admin_token)." },
+          "token": { "type": "string", "description": "The exact minted token; Verify(token, key) must succeed." },
+          "expect_claims": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["wsid", "org", "exp", "scope"],
+            "properties": {
+              "wsid": { "type": "string" },
+              "org": { "type": "string" },
+              "exp": { "type": "integer" },
+              "scope": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

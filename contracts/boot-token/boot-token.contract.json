@@ -1,0 +1,56 @@
+{
+  "schema_version": "boot-token/v1",
+  "contract_layer": "boot-token",
+  "_doc": [
+    "The WS-A scoped, pre-register workspace boot token. An ordinary workspace box",
+    "no longer carries the tenant admin_token (least privilege, founder ruling",
+    "2026-07-08); it authenticates its two PRE-register operations — boot-event",
+    "phone-home and object-store platform-proxy restore-on-boot — with THIS token.",
+    "Opaque stateless HMAC bearer keyed on the per-tenant admin_token (HMAC key",
+    "ONLY, never transmitted → conveys no admin power). The CP mints it; the CP",
+    "(boot-event) and molecule-core (restore route) verify it offline against the",
+    "same per-tenant key. The test_vectors are the anti-drift anchor: the minter",
+    "(molecule-controlplane internal/boottoken) and BOTH verifiers must reproduce",
+    "them byte-for-byte."
+  ],
+  "ownership": {
+    "shape_owner": "molecule-ai-sdk",
+    "minter": "molecule-controlplane",
+    "verifiers": ["molecule-controlplane", "molecule-core"]
+  },
+  "construction": {
+    "format": "base64url(payload_json) + \".\" + base64url(sig)",
+    "algorithm": "HMAC-SHA256",
+    "signing_input": "the base64url-encoded payload string (the part before the dot)",
+    "encoding": "base64url, RFC 4648 §5, no padding",
+    "payload_encoding": "compact UTF-8 JSON of the claims object, fields in the order wsid, org, exp, scope"
+  },
+  "claims": {
+    "wsid": "workspace id the token is bound to",
+    "org": "org id the token is bound to (must match the presented org header on boot-event)",
+    "exp": "expiry, unix seconds; verifier rejects when now > exp",
+    "scope": "array of granted scopes (see scopes)"
+  },
+  "key": {
+    "source": "per-tenant admin_token",
+    "cp_column": "org_instances.admin_token",
+    "platform_env": "ADMIN_TOKEN",
+    "transmitted": false
+  },
+  "env": "MOLECULE_BOOT_TOKEN",
+  "scopes": ["boot-event", "restore"],
+  "ttl_seconds_default": 604800,
+  "test_vectors": [
+    {
+      "name": "boot-event+restore, fixed exp 2030-01-01",
+      "key": "golden-tenant-admin-key-v1",
+      "token": "eyJ3c2lkIjoid3MtZ29sZGVuLTAwMDEiLCJvcmciOiJvcmctZ29sZGVuLTAwMDEiLCJleHAiOjE4OTM0NTYwMDAsInNjb3BlIjpbImJvb3QtZXZlbnQiLCJyZXN0b3JlIl19.bI345Nc3Hp8ASXQoBhlbiXiunHghZJcBQk81YXXQZm0",
+      "expect_claims": {
+        "wsid": "ws-golden-0001",
+        "org": "org-golden-0001",
+        "exp": 1893456000,
+        "scope": ["boot-event", "restore"]
+      }
+    }
+  ]
+}
