@@ -4,8 +4,8 @@
 //
 // This is DELIBERATELY DISTINCT from cloudprovider (the compute-backend SSOT):
 // cloudprovider answers "where does the box run" (AWS/GCP/Hetzner/local); this
-// answers "which model does the agent talk to" (Anthropic/OpenAI/MiniMax/…) and
-// "which runtime hosts it" (claude-code/codex/openclaw/google-adk/hermes) with
+// answers "which model does the agent talk to" (Anthropic/OpenAI/MiniMax/...) and
+// "which runtime hosts it" (claude-code/codex/openclaw/hermes) with
 // the RFC #340 narrow native model matrix.
 //
 // Before this package the registry was pasted independently in places that

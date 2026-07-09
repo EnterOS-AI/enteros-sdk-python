@@ -452,10 +452,10 @@ providers:
     model_aliases: []
 
   # Google Vertex AI — served via the Molecule CP LLM proxy (NOT on-box ADC).
-  # google-adk routes ALL Gemini through the proxy, which mints a Vertex token
-  # server-side over Workload Identity Federation (AWS -> GCP STS -> SA; see
-  # internal/vertexauth + llm_proxy.go google/vertex case) and meters usage to
-  # org credits. The former on-box ADC delivery (a NON-SECRET external_account
+  # Platform-managed Vertex requests mint a token server-side over Workload
+  # Identity Federation (AWS -> GCP STS -> SA; see internal/vertexauth +
+  # llm_proxy.go google/vertex case) and meter usage to org credits. The former
+  # on-box ADC delivery (a NON-SECRET external_account
   # cred-config written to /configs/gcp-adc.json via GOOGLE_APPLICATION_CREDENTIALS,
   # injected by the provisioner) was REMOVED: a tenant has EC2 root and could
   # have used that credential to call Vertex DIRECTLY, bypassing metering
@@ -1130,46 +1130,3 @@ runtimes:
           - minimax:MiniMax-M2.7
           - minimax:MiniMax-M2.7-highspeed
       - name: groq
-
-
-  # google-adk: Gemini via Vertex AI, keyless ADC (Workload Identity
-  # Federation; provisioner cp#416 + envs.yaml). The google vendor entry
-  # in the top-level providers: list supplies auth/model-prefix metadata;
-  # this runtimes entry declares the selectable model set.
-  google-adk:
-    display_name: "Google ADK"
-    providers:
-      # Platform-managed (keyless, metered) Gemini via the Molecule LLM proxy ->
-      # Vertex AI (server-side WIF mint; NO credential on the tenant box — the
-      # keyless-Vertex leak fix). Resolves to the closed `platform` provider ->
-      # IsPlatform=true -> platform_managed billing + required_env=[] (derived).
-      # The org-compliant default. The runtime translates the `platform:` select
-      # id to the bare wire id the proxy routes to Vertex.
-      - name: platform
-        models:
-          - platform:gemini-2.5-pro
-          - platform:gemini-2.5-flash
-      # API-key BYOK arm: AI Studio (the tenant's OWN GOOGLE_API_KEY).
-      #
-      # The colon-namespaced `google_genai:` ids are the BYOK spelling the
-      # template's models[] offers (template-google-adk main:
-      # `google_genai:gemini-2.5-pro` / `-flash`, AI-Studio BYOK; the default is
-      # the platform arm above). The runtime adapter (_routing.resolve_model)
-      # treats `google_genai`/`google`/`gemini` as the SAME AI-Studio prefix
-      # family — it strips the prefix to the bare `gemini-2.5-pro` and serves it
-      # via ADK LlmAgent on the AI-Studio backend (GOOGLE_API_KEY) — so both the
-      # bare and `google_genai:` forms resolve to THIS `google` arm. The bare ids
-      # stay (registry-projection / canvas form); the `google_genai:` ids are
-      # ADDED because the LIVE core check is EXACT membership in ModelsForRuntime,
-      # NOT the `^gemini-` prefix (model_registry_validation.go), so without these
-      # exact entries a template BYOK create 422s UNREGISTERED_MODEL_FOR_RUNTIME.
-      # (This corrects the template's own stale comment that `google_genai:` is
-      # covered by the `^gemini-` prefix — it is not; `^gemini-` matches only the
-      # BARE id.) Vertex was intentionally dropped from the runtime arm (cp#514);
-      # the template no longer offers `vertex:`, so no vertex arm is added here.
-      - name: google
-        models:
-          - gemini-2.5-pro
-          - gemini-2.5-flash
-          - google_genai:gemini-2.5-pro
-          - google_genai:gemini-2.5-flash

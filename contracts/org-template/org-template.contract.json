@@ -1,11 +1,11 @@
 {
-  "name": "Gemini Growth Team",
-  "description": "Gemini-on-ADK marketing team — a Marketing Lead coordinates four Gemini specialists over A2A. Inline composition style.",
+  "name": "Hermes Growth Team",
+  "description": "Hermes marketing team — a Marketing Lead coordinates four specialists over A2A. Inline composition style.",
   "defaults": {
-    "runtime": "google-adk",
+    "runtime": "hermes",
     "tier": 2,
-    "model": "vertex:gemini-2.5-pro",
-    "required_env": ["GOOGLE_CLOUD_PROJECT"],
+    "model": "minimax/MiniMax-M2.7",
+    "required_env": [],
     "plugins": ["molecule-careful-bash"],
     "idle_prompt": "",
     "idle_interval_seconds": 600
