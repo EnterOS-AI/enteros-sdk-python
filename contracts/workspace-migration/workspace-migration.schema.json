@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/workspace-migration/workspace-migration.schema.json",
+  "$comment": "contract-version 0.1.0 — cross-provider workspace (COMPUTE) migration. A data-safe move of one workspace/agent between cloud providers {aws,hetzner,gcp}: snapshot source -> provision+restore target -> verified cutover -> retire source. The object store stays fixed; the COMPUTE re-homes. A sub-contract of the object-store family: CONSUMES contracts/object-store (the snapshot handoff, delivery) + contracts/workspace-data (the snapshot protocol). Orthogonal to contracts/data-migration (which re-homes the STORE with compute fixed).",
+  "title": "Workspace Migration (Cross-Provider Compute Move) Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for the data-safe cross-cloud workspace migration. The control-plane moves one workspace's compute between providers via the object store: it snapshots the source to the store, provisions the target (which restores /workspace on boot), health-checks + re-credentials the target, atomically cuts over the tenant binding, then retires the source. The SDK owns this SHAPE + the state machine + invariants; the implementation lives in molecule-controlplane (internal/provisioner/workspace_migrator.go + the admin handler). The data handoff rides contracts/object-store + contracts/workspace-data — this contract governs the MOVE, not the storage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_layer", "ownership", "operation", "providers", "endpoints", "request", "states", "flow", "handoff", "invariants", "durability", "state_table"],
+  "properties": {
+    "_doc": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "workspace-migration/v1" },
+    "contract_layer": { "type": "string", "const": "workspace-migration" },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape_owner", "implementation_owner", "builds_on"],
+      "properties": {
+        "shape_owner": { "type": "string", "const": "molecule-ai-sdk" },
+        "implementation_owner": { "type": "string", "const": "molecule-controlplane" },
+        "builds_on": { "type": "array", "items": { "type": "string" }, "const": ["object-store", "workspace-data"] }
+      }
+    },
+    "operation": { "type": "string", "const": "cross-provider-compute-move", "description": "Re-home a workspace's compute across clouds; the object store is fixed." },
+    "providers": { "type": "array", "items": { "type": "string" }, "const": ["aws", "hetzner", "gcp"] },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["migrate", "status"],
+      "properties": {
+        "migrate": { "type": "string", "const": "POST /cp/admin/workspaces/:id/migrate-provider" },
+        "status": { "type": "string", "const": "GET /cp/admin/workspaces/:id/migration-status" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The migrate request shape. `from`!=`to` enforced; `confirm:true` REQUIRED (mutates two clouds). Source instance/org/runtime are resolved from TRUSTED CP state, not the request (cp#711 confused-deputy guard).",
+      "required": ["fields", "confirm_required"],
+      "properties": {
+        "fields": { "type": "array", "items": { "type": "string" }, "const": ["from", "to", "confirm", "env", "runtime", "image"] },
+        "confirm_required": { "type": "boolean", "const": true }
+      }
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "terminal"],
+      "properties": {
+        "sequence": { "type": "array", "items": { "type": "string" }, "const": ["snapshotting", "snapshotted", "provisioning_target", "target_healthy", "retiring_source", "completed"] },
+        "terminal": { "type": "array", "items": { "type": "string" }, "const": ["completed", "failed", "rolled_back"] }
+      }
+    },
+    "flow": {
+      "type": "array",
+      "description": "The end-to-end steps (CP-driven, async on a detached context, ~15-20m).",
+      "items": { "type": "string" },
+      "const": [
+        "1-snapshot-source-to-store-and-verify",
+        "2-provision-target-restores-workspace-on-boot",
+        "2c-revoke-stale-auth-token",
+        "3-health-check-cutover",
+        "3b-repoint-tenant-compute-instance-at-new-box",
+        "3c-reinject-llm-credentials-and-reverify",
+        "4-retire-source"
+      ]
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Source data reaches the target through the object store (CONSUMES object-store + workspace-data). CP mints ON-DEMAND presigned URLs (tighter TTL than the boot timer, since they can leak into SSM command history).",
+      "required": ["via", "presign_put", "presign_get", "on_demand_ttl_seconds", "snapshot_freshness_seconds", "key", "persisted_paths"],
+      "properties": {
+        "via": { "type": "string", "const": "object-store-presigned-put-source-then-presigned-get-target" },
+        "presign_put": { "type": "string", "const": "PresignSnapshotPut" },
+        "presign_get": { "type": "string", "const": "PresignRestoreGet" },
+        "on_demand_ttl_seconds": { "type": "integer", "const": 900 },
+        "snapshot_freshness_seconds": { "type": "integer", "const": 900, "description": "Hetzner/GCP rely on the periodic timer; verifyRecentSnapshot requires a snapshot within this window before cutover." },
+        "key": { "type": "string", "const": "workspace-data/{workspace_id}/latest.tar.zst", "description": "The workspace-data LatestKey — same object the boot snapshot uses." },
+        "persisted_paths": { "type": "array", "items": { "type": "string" }, "const": ["/workspace", "/home/agent/.claude"] }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "description": "Data-safety invariants (pinned so a refactor can't drop them).",
+      "items": { "type": "string" },
+      "const": [
+        "verify-before-destroy-nonempty-snapshot-confirmed-before-source-touched",
+        "target-verified-before-source-retire-healthcheck-plus-credential-reinject",
+        "atomic-cutover-url-flip-binding-prevents-false-success-on-running-source",
+        "critical-path-integrity-restore-aborts-unless-workspace-restored",
+        "idempotency-partial-unique-active-lock-one-migration-per-workspace"
+      ]
+    },
+    "durability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Failure semantics + reaping.",
+      "required": ["pre_cutover_failure", "post_provision_failure", "handler_timeout_seconds", "watchdog_tick_seconds", "watchdog_stale_seconds", "active_lock_predicate"],
+      "properties": {
+        "pre_cutover_failure": { "type": "string", "const": "record-failed-leave-source-running" },
+        "post_provision_failure": { "type": "string", "const": "record-rolled_back-teardown-target-repoint-source-keep-source" },
+        "handler_timeout_seconds": { "type": "integer", "const": 1800 },
+        "watchdog_tick_seconds": { "type": "integer", "const": 300 },
+        "watchdog_stale_seconds": { "type": "integer", "const": 2700 },
+        "active_lock_predicate": { "type": "string", "const": "state NOT IN (completed,failed,rolled_back)" }
+      }
+    },
+    "state_table": { "type": "string", "const": "workspace_migrations", "description": "Dedicated table (migration 051), NOT org_instances." }
+  }
+}

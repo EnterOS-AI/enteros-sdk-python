@@ -1,0 +1,51 @@
+{
+  "schema_version": "data-migration/v1",
+  "contract_layer": "data-migration",
+  "_doc": [
+    "Store-to-store object re-homing — a sub-contract of the object-store family.",
+    "Moves a workspace's persisted objects between two object-store BACKENDS (canonically",
+    "the global R2 -> a tenant's own MinIO) with the COMPUTE fixed. Inverse of",
+    "workspace-migration (compute moves, store fixed). CONSUMES object-store (Backend pair +",
+    "op set) + workspace-data (key scheme + persisted set). The copy/verify/cutover",
+    "orchestration is NET-NEW; this contract is the SSOT it will conform to."
+  ],
+  "ownership": {
+    "shape_owner": "molecule-ai-sdk",
+    "implementation_owner": "molecule-controlplane",
+    "builds_on": ["object-store", "workspace-data"]
+  },
+  "operation": "store-to-store-object-rehome",
+  "direction": {
+    "source_backend_from": "object-store.backends.enum",
+    "target_backend_from": "object-store.backends.enum",
+    "canonical": "r2->minio"
+  },
+  "scope": {
+    "unit": "per-workspace",
+    "v1_keys": ["workspace-data/{workspace_id}/latest.tar.zst"],
+    "later": ["image-gen-blobs", "attachments"]
+  },
+  "states": {
+    "sequence": ["pending", "copying", "verifying", "cutover", "done"],
+    "terminal": ["done", "failed"]
+  },
+  "protocol": {
+    "copy": "get-source-then-put-target-over-object-store-ops",
+    "manifest_unit": "object-key-size_bytes-created_at",
+    "resume": "idempotent-list-diff-by-key-and-size-skip-already-copied",
+    "verify": "per-object-checksum-plus-size-match-before-cutover",
+    "cutover": "flip-tenant-endpoint-only-after-verify-source-retained-until-then"
+  },
+  "invariants": [
+    "verify-before-cutover-no-endpoint-flip-until-every-object-verified",
+    "idempotent-resume-partial-copy-safe-to-rerun",
+    "source-retained-until-verified-cutover-no-delete-source-on-the-happy-path"
+  ],
+  "reuses": {
+    "key_root": "workspace-data (workspace-data.key_scheme.root)",
+    "key_templates": "workspace-data.key_scheme.{prefix_template,latest_key_template}",
+    "persisted_paths": "workspace-data.persisted_paths",
+    "backend_enum": "object-store.backends.enum"
+  },
+  "status": "net-new-orchestration-not-yet-implemented"
+}

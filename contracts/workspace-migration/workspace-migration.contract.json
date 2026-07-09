@@ -1,0 +1,64 @@
+{
+  "schema_version": "workspace-migration/v1",
+  "contract_layer": "workspace-migration",
+  "_doc": [
+    "Cross-provider workspace (COMPUTE) migration — a sub-contract of the object-store family.",
+    "Moves one workspace/agent between clouds {aws,hetzner,gcp}: snapshot source -> provision +",
+    "restore target -> verified cutover -> retire source. The object store stays fixed; the",
+    "compute re-homes. CONSUMES object-store (delivery) + workspace-data (snapshot protocol).",
+    "Orthogonal to data-migration (which re-homes the STORE with compute fixed)."
+  ],
+  "ownership": {
+    "shape_owner": "molecule-ai-sdk",
+    "implementation_owner": "molecule-controlplane",
+    "builds_on": ["object-store", "workspace-data"]
+  },
+  "operation": "cross-provider-compute-move",
+  "providers": ["aws", "hetzner", "gcp"],
+  "endpoints": {
+    "migrate": "POST /cp/admin/workspaces/:id/migrate-provider",
+    "status": "GET /cp/admin/workspaces/:id/migration-status"
+  },
+  "request": {
+    "fields": ["from", "to", "confirm", "env", "runtime", "image"],
+    "confirm_required": true
+  },
+  "states": {
+    "sequence": ["snapshotting", "snapshotted", "provisioning_target", "target_healthy", "retiring_source", "completed"],
+    "terminal": ["completed", "failed", "rolled_back"]
+  },
+  "flow": [
+    "1-snapshot-source-to-store-and-verify",
+    "2-provision-target-restores-workspace-on-boot",
+    "2c-revoke-stale-auth-token",
+    "3-health-check-cutover",
+    "3b-repoint-tenant-compute-instance-at-new-box",
+    "3c-reinject-llm-credentials-and-reverify",
+    "4-retire-source"
+  ],
+  "handoff": {
+    "via": "object-store-presigned-put-source-then-presigned-get-target",
+    "presign_put": "PresignSnapshotPut",
+    "presign_get": "PresignRestoreGet",
+    "on_demand_ttl_seconds": 900,
+    "snapshot_freshness_seconds": 900,
+    "key": "workspace-data/{workspace_id}/latest.tar.zst",
+    "persisted_paths": ["/workspace", "/home/agent/.claude"]
+  },
+  "invariants": [
+    "verify-before-destroy-nonempty-snapshot-confirmed-before-source-touched",
+    "target-verified-before-source-retire-healthcheck-plus-credential-reinject",
+    "atomic-cutover-url-flip-binding-prevents-false-success-on-running-source",
+    "critical-path-integrity-restore-aborts-unless-workspace-restored",
+    "idempotency-partial-unique-active-lock-one-migration-per-workspace"
+  ],
+  "durability": {
+    "pre_cutover_failure": "record-failed-leave-source-running",
+    "post_provision_failure": "record-rolled_back-teardown-target-repoint-source-keep-source",
+    "handler_timeout_seconds": 1800,
+    "watchdog_tick_seconds": 300,
+    "watchdog_stale_seconds": 2700,
+    "active_lock_predicate": "state NOT IN (completed,failed,rolled_back)"
+  },
+  "state_table": "workspace_migrations"
+}
