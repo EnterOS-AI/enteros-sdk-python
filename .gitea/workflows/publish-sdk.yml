@@ -277,9 +277,15 @@ jobs:
             echo "::error::installed $INSTALLED, want $SDK_VERSION"
             exit 1
           fi
-          # Import both shipped packages. adapter_conformance must import to prove
-          # the conformance module ships in the wheel (molecule_plugin* include).
-          $PY -c "from molecule_plugin import AgentskillsAdaptor, validate_plugin; from molecule_plugin.adapter_conformance import AdapterConformance; from molecule_external_workspace import RemoteAgentClient; print('sdk registry smoke OK')"
+          # Import the runtime-facing packages to prove the wheel installs and
+          # imports cleanly. We deliberately do NOT import
+          # molecule_plugin.adapter_conformance here: it does a module-level
+          # `import pytest` (it ships a conformance-test base class), and pytest
+          # is a TEST dependency that is not installed in this verify venv. The
+          # verify step's job is to confirm the wheel installs + the
+          # runtime-facing packages import — not to drag in a test dependency
+          # just to prove a conformance-test base class ships.
+          $PY -c "from molecule_plugin import AgentskillsAdaptor, validate_plugin; from molecule_external_workspace import RemoteAgentClient; print('sdk registry smoke OK')"
 
       - name: Publish summary
         if: always()
