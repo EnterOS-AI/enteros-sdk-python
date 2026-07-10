@@ -86,7 +86,7 @@
           "type": "object",
           "description": "The build-time pre-bake requirement that makes the boot-time launch resolve offline (the launch-side of RCA #2970).",
           "additionalProperties": false,
-          "required": ["required", "owner", "cache_home", "rationale", "conformance", "lockstep"],
+          "required": ["required", "owner", "cache_home", "rationale", "conformance", "home_independent", "lockstep"],
           "properties": {
             "required": {
               "type": "boolean",
@@ -107,6 +107,10 @@
             "conformance": {
               "type": "string",
               "description": "The build-time offline self-check that gates the image."
+            },
+            "home_independent": {
+              "type": "string",
+              "description": "Requirement that the scoped-registry + cache config be GLOBAL (HOME-independent), so the mgmt-MCP resolves under the launch HOME the runtime spawns it with (not just the agent home); the self-check must verify under a foreign HOME."
             },
             "lockstep": {
               "type": "string",

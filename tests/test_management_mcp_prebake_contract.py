@@ -58,3 +58,17 @@ def test_prebake_required_and_conformance_names_the_gate_tool():
     # Ownership is the base runtime (a per-template fork is the anti-pattern this
     # block exists to retire) — the word "base runtime" must appear.
     assert "base runtime" in pb["owner"].lower()
+
+
+def test_prebake_home_independence_is_governed():
+    # The runtime spawns the mgmt-MCP under a launch HOME that may NOT be the
+    # agent home (observed /root in the local docker provisioner); a HOME-local
+    # ${HOME}/.npmrc would ETARGET on the private @molecule-ai scope even when the
+    # version is correctly baked (#1027 fail-close). The contract mandates GLOBAL
+    # (HOME-independent) registry+cache config and a FOREIGN-HOME self-check so
+    # this launch-side regression can never ship.
+    pb = _contract()["management_mcp_server"]["prebake"]
+    hi = pb["home_independent"].lower()
+    assert "global" in hi, "home_independent must mandate GLOBAL npm config"
+    assert "home" in hi
+    assert "foreign home" in pb["conformance"].lower(), "conformance must require the foreign-HOME check"
