@@ -1,0 +1,295 @@
+name: publish-sdk
+
+# Mirrors molecule-ai-workspace-runtime/.gitea/workflows/publish-runtime.yml.
+# Publishes the molecule-ai-sdk wheel + sdist to the private Gitea PyPI
+# registry. Triggered by a `sdk-v*` tag (repo-prefixed to avoid colliding with
+# the runtime's `runtime-v*` tags in the shared org).
+#
+# AUTH: there is NO package-write Gitea Actions secret by design. The Gitea
+# package-publisher token (MOL_PACKAGE_TOKEN, a PAT with `write:package` owned by
+# the `pypi-publisher` persona) is sourced from the Infisical SSOT
+# (https://key.moleculesai.app, prod env, /ci/gitea-pypi-publisher) via the CI
+# machine identity, exactly as the runtime does.
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
+
+env:
+  GITEA_URL: https://git.moleculesai.app
+  GITEA_PYPI_SIMPLE_URL: https://git.moleculesai.app/api/packages/molecule-ai/pypi/simple/
+  GITEA_PYPI_UPLOAD_URL: https://git.moleculesai.app/api/packages/molecule-ai/pypi/
+
+jobs:
+  publish:
+    runs-on: publish
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      wheel_sha256: ${{ steps.wheel_hash.outputs.wheel_sha256 }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Derive version + stamp pyproject (tag is source of truth)
+        id: version
+        # TAG source of truth (mirrors runtime): `main` is PR-only (protected),
+        # so we do NOT commit a pyproject version bump. When triggered by a
+        # `sdk-v*` tag, the TAG is authoritative: we STAMP the tag's version into
+        # pyproject.toml at build time (ephemeral, in-CI — NEVER committed back)
+        # so the wheel carries the correct version by construction. On manual
+        # workflow_dispatch (no tag) we fall back to whatever pyproject declares.
+        run: |
+          set -eu
+          STAMP_FROM_TAG=0
+          if echo "$GITHUB_REF" | grep -q "^refs/tags/sdk-v"; then
+            VERSION="${GITHUB_REF#refs/tags/sdk-v}"
+            STAMP_FROM_TAG=1
+          else
+            VERSION=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              print(tomllib.load(f)["project"]["version"])
+          PY
+          )
+          fi
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([a-z0-9.+-]+)?$'; then
+            echo "::error::version $VERSION does not look like a PEP 440 release"
+            exit 1
+          fi
+          if [ "$STAMP_FROM_TAG" = "1" ]; then
+            # Ephemeral, in-CI stamp — NOT committed back to the repo. After this the
+            # built wheel/sdist carry $VERSION regardless of what main's pyproject says.
+            VERSION="$VERSION" python - <<'PY'
+          import os, re
+          version = os.environ["VERSION"]
+          with open("pyproject.toml", "r", encoding="utf-8") as f:
+              text = f.read()
+          new, n = re.subn(
+              r'(?m)^(version\s*=\s*)"[^"]+"',
+              r'\g<1>"' + version + '"',
+              text,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit('could not locate a single version = "..." line in pyproject.toml')
+          with open("pyproject.toml", "w", encoding="utf-8") as f:
+              f.write(new)
+          print(f"stamped pyproject [project].version = {version} (ephemeral build-time)")
+          PY
+          fi
+          PYPROJECT_VERSION=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              print(tomllib.load(f)["project"]["version"])
+          PY
+          )
+          # After the stamp this is trivially equal; we keep the read as a sanity
+          # assertion (catches a botched stamp) rather than a policy gate on main.
+          if [ "$VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::after stamp, build version $VERSION != pyproject $PYPROJECT_VERSION (stamp failed?)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing molecule-ai-sdk $VERSION to Gitea package registry"
+
+      - name: Build wheel + sdist
+        run: |
+          set -eu
+          pip install build twine
+          python -m build
+          python -m twine check dist/*
+          # SUPPLY-CHAIN GUARD — stop registry shadowing at the source. The
+          # publish step must ship ONLY this project's own wheel + sdist, never a
+          # dependency closure. `python -m build` emits just our two artifacts,
+          # but a dirty runner workspace or a stray `pip download` could leave a
+          # PUBLIC dependency wheel (requests, pyyaml, ...) in dist/, which a
+          # `twine upload dist/*` would then SHADOW inside our private registry
+          # (a dependency-confusion footgun). Derive our canonical dist filename
+          # prefix from pyproject (PEP 503/427: runs of - _ . collapse to _) and
+          # FAIL LOUD if dist/ holds anything else. For molecule-ai-sdk this is
+          # the molecule_ai_sdk-*.whl / molecule_ai_sdk-*.tar.gz prefix.
+          DIST_NAME=$(grep -E '^name[[:space:]]*=' pyproject.toml | head -1 \
+            | sed -E 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/' \
+            | sed -E 's/[-_.]+/_/g' | tr '[:upper:]' '[:lower:]')
+          if [ -z "$DIST_NAME" ]; then
+            echo "::error::could not derive package dist name from pyproject.toml"
+            exit 1
+          fi
+          echo "DIST_NAME=$DIST_NAME" >> "$GITHUB_ENV"
+          unexpected=$(ls dist/ | grep -viE "^${DIST_NAME}-.*\.(whl|tar\.gz)$" || true)
+          if [ -n "$unexpected" ]; then
+            echo "::error::dist/ holds non-package artifacts -- a dependency closure here would shadow public PyPI packages in our registry. Refusing to publish:"
+            echo "$unexpected"
+            exit 1
+          fi
+          echo "dist/ contains only ${DIST_NAME} wheel + sdist (no dependency closure)"
+
+      - name: Capture wheel SHA256
+        id: wheel_hash
+        run: |
+          set -eu
+          WHEEL=$(ls dist/*.whl | head -1)
+          HASH=$(sha256sum "$WHEEL" | awk '{print $1}')
+          echo "wheel_sha256=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Wheel: $(basename "$WHEEL")"
+          echo "SHA256: $HASH"
+
+      # KMS migration (Gitea-Actions-secrets -> Infisical/KMS): source the
+      # canonical Gitea package-publisher token from the Infisical SSOT via the
+      # CI machine identity, mirroring the runtime's proven REST-fetch pattern.
+      # The consolidated least-privilege credential is MOL_PACKAGE_TOKEN (a Gitea
+      # PAT with `write:package` scope owned by the `pypi-publisher` persona) in
+      # the prod /ci/gitea-pypi-publisher folder. It is exported to $GITHUB_ENV so
+      # the publish step below references it via env.* in the SAME job.
+      #
+      # POSITIVE CONTROL: Infisical is the AUTHORITATIVE source for this
+      # credential, so this step uses `set -uo pipefail`, a null-safe JSON
+      # extractor, and an explicit non-empty assertion to HARD-FAIL on a
+      # broken/empty/404/auth-failure fetch. We do NOT fall back to a Gitea
+      # secret here: a broken authoritative fetch must surface loudly rather
+      # than be silently masked.
+      - name: Fetch Gitea package-publisher token from Infisical SSOT
+        id: pypi_publisher_creds
+        env:
+          INFISICAL_CI_CLIENT_ID: ${{ secrets.INFISICAL_CI_CLIENT_ID }}
+          INFISICAL_CI_CLIENT_SECRET: ${{ secrets.INFISICAL_CI_CLIENT_SECRET }}
+          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_CI_PROJECT_ID }}
+        run: |
+          set -uo pipefail
+          BASE="https://key.moleculesai.app"
+          if [ -z "${INFISICAL_CI_CLIENT_ID:-}" ] || [ -z "${INFISICAL_CI_CLIENT_SECRET:-}" ] || [ -z "${INFISICAL_PROJECT_ID:-}" ]; then
+            echo "::error::Infisical CI machine identity (INFISICAL_CI_CLIENT_ID / INFISICAL_CI_CLIENT_SECRET / INFISICAL_CI_PROJECT_ID) is not set -- cannot fetch publisher creds from the SSOT"
+            exit 1
+          fi
+          TOK=$(curl -fsS -X POST "$BASE/api/v1/auth/universal-auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"clientId\":\"$INFISICAL_CI_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CI_CLIENT_SECRET\"}" \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); v=d.get("accessToken"); print(v if isinstance(v,str) and v else "")')
+          if [ -z "${TOK}" ]; then
+            echo "::error::Infisical universal-auth login returned no accessToken -- authoritative fetch cannot proceed"
+            exit 1
+          fi
+          # Null-safe extractor: never KeyErrors; prints empty string when the
+          # secret (or any nesting level) is missing, so the [ -z ] guard below
+          # is the single fail-closed decision point.
+          read_secret() {
+            curl -fsS "$BASE/api/v3/secrets/raw/$1?workspaceId=$INFISICAL_PROJECT_ID&environment=prod&secretPath=$2" \
+              -H "Authorization: Bearer $TOK" \
+              | python3 -c 'import sys,json; d=json.load(sys.stdin); v=(d.get("secret") or {}).get("secretValue"); print(v if isinstance(v,str) and v else "")'
+          }
+          MOL_PACKAGE_TOKEN=$(read_secret MOL_PACKAGE_TOKEN %2Fci%2Fgitea-pypi-publisher)
+          if [ -z "${MOL_PACKAGE_TOKEN}" ]; then
+            echo "::error::Infisical returned empty for MOL_PACKAGE_TOKEN at /ci/gitea-pypi-publisher (prod) -- authoritative fetch failed; failing loudly"
+            exit 1
+          fi
+          echo "::add-mask::$MOL_PACKAGE_TOKEN"
+          echo "MOL_PACKAGE_TOKEN=$MOL_PACKAGE_TOKEN" >> "$GITHUB_ENV"
+          # Sentinel: prove non-empty without ever printing a value (length only).
+          echo "Gitea package-publisher token loaded from Infisical (token len=${#MOL_PACKAGE_TOKEN})"
+
+      - name: Publish to Gitea package registry
+        env:
+          # KMS migration: consumed from $GITHUB_ENV (written by the Infisical
+          # fetch step above) rather than a duplicated Gitea Actions secret.
+          MOL_PACKAGE_TOKEN: ${{ env.MOL_PACKAGE_TOKEN }}
+        run: |
+          set -eu
+          # Canonical least-privilege publisher identity (write:package). The
+          # Gitea package registry authenticates the token; the username is the
+          # token owner (`pypi-publisher`).
+          PUBLISHER_USER="pypi-publisher"
+          if [ -z "${MOL_PACKAGE_TOKEN:-}" ]; then
+            echo "::error::Gitea package registry publisher token is not set (Infisical fetch step did not export it)"
+            exit 1
+          fi
+          # Idempotent publish: a re-run of this workflow must not hard-fail on the
+          # already-published version. twine --skip-existing is NOT usable here --
+          # twine hard-rejects it for the Gitea registry ("UnsupportedConfiguration").
+          # Instead pre-check the registry simple index for every dist file and
+          # skip the upload when all are already present.
+          SIMPLE_BASE="${GITEA_PYPI_UPLOAD_URL%/}/simple"
+          # Publish ONLY our own wheel + sdist -- never `dist/*`. If a stray
+          # dependency wheel ever reached dist/, `dist/*` would upload it and
+          # shadow the public PyPI package inside our registry. DIST_NAME was
+          # derived from pyproject in the build step (exported via $GITHUB_ENV)
+          # and the build step already hard-failed on any non-package artifact.
+          set -- "dist/${DIST_NAME}-"*.whl "dist/${DIST_NAME}-"*.tar.gz
+          missing=0
+          for f in "$@"; do
+            [ -e "$f" ] || { echo "::error::expected artifact not found: $f"; exit 1; }
+            base=$(basename "$f")
+            pkg=$(printf %s "$base" | cut -d- -f1 | tr _ -)
+            if curl -fsS -u "$PUBLISHER_USER:$MOL_PACKAGE_TOKEN" \
+                 "$SIMPLE_BASE/$pkg/" 2>/dev/null | grep -qF "$base"; then
+              echo "::notice::$base already in registry"
+            else
+              missing=1
+            fi
+          done
+          if [ "$missing" = "0" ]; then
+            echo "::notice::all dist files already published (re-run) -- skipping upload"
+          else
+            python -m twine upload \
+              --repository-url "$GITEA_PYPI_UPLOAD_URL" \
+              --username "$PUBLISHER_USER" \
+              --password "$MOL_PACKAGE_TOKEN" \
+              "$@"
+          fi
+
+      - name: Verify install from Gitea registry
+        env:
+          SDK_VERSION: ${{ steps.version.outputs.version }}
+          EXPECTED_SHA256: ${{ steps.wheel_hash.outputs.wheel_sha256 }}
+        run: |
+          set -eu
+          python -m venv /tmp/sdk-registry-smoke
+          PIP=/tmp/sdk-registry-smoke/bin/pip
+          PY=/tmp/sdk-registry-smoke/bin/python
+          $PIP install --upgrade --quiet pip
+          # HERMETIC: the Gitea index does NOT proxy public PyPI, so a bare
+          # private --index-url 404s the SDK's PUBLIC transitive deps
+          # (requests, pyyaml) — the wheel uploads fine in the step above, then
+          # THIS step would fail. The private index stays primary (it is the only
+          # source of the molecule-ai-sdk dist — the name is absent from public
+          # PyPI); pypi.org is the extra index for the public deps, the
+          # fleet-standard pattern (mirrors publish-runtime.yml).
+          $PIP install \
+            --index-url "$GITEA_PYPI_SIMPLE_URL" \
+            --extra-index-url "https://pypi.org/simple/" \
+            --no-cache-dir \
+            "molecule-ai-sdk==$SDK_VERSION"
+          INSTALLED=$($PIP show molecule-ai-sdk | awk -F': ' '/^Version:/{print $2}')
+          if [ "$INSTALLED" != "$SDK_VERSION" ]; then
+            echo "::error::installed $INSTALLED, want $SDK_VERSION"
+            exit 1
+          fi
+          # Import both shipped packages. adapter_conformance must import to prove
+          # the conformance module ships in the wheel (molecule_plugin* include).
+          $PY -c "from molecule_plugin import AgentskillsAdaptor, validate_plugin; from molecule_plugin.adapter_conformance import AdapterConformance; from molecule_external_workspace import RemoteAgentClient; print('sdk registry smoke OK')"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "## publish-sdk $(date -u +%FT%TZ)"
+            echo
+            echo "**Version:** \`${{ steps.version.outputs.version }}\`"
+            echo "**Registry:** \`$GITEA_PYPI_SIMPLE_URL\`"
+            echo "**Wheel SHA256:** \`${{ steps.wheel_hash.outputs.wheel_sha256 }}\`"
+            echo
+            echo "PyPI is intentionally not part of this release path."
+          } >> "$GITHUB_STEP_SUMMARY"
