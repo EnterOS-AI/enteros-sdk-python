@@ -1,0 +1,152 @@
+{
+  "$comment": "OFFICIAL runtime registry (ADR-004 §2). SSOT for the set of natively-supported runtimes and their adapter-socket metadata. Adapter-facing companion to ../mcp/mcp-plugin-delivery.contract.json: the per-runtime `mcp` block below is RECONCILED with that contract's `runtimes` block (same runtimes, same native path/format/server-map location) — that delivery contract remains SSOT for the MCP-server descriptor + gate tool; THIS file is the SSOT for which runtimes are officially supported and their adapter identity/persona/enumerate metadata. Third-party developers register their own adapters against the SAME adapter-socket contract (see ./adapter-socket.contract.md) WITHOUT being listed here — the registry is a convenience for first-party support, not a gate on who may implement (ADR-004 §2). ADR-004 GUT: the per-runtime *shape* of each seam (render / read / present / enumerate / materialize) now lives IN each template repo's adapter (the socket methods below), NOT in the shared engine. The engine (mcp_render / persona_render / loaded_mcp_tools_probe) keeps only GENERIC, runtime-name-free helpers (read_canonical_persona, write_persona, enumerate_from_specs_async, normalize_runtime) — it holds ZERO per-runtime dispatch tables and never spells a runtime name (ratchet-enforced: molecule-ai-workspace-runtime/tests/test_engine_no_runtime_dispatch_ratchet.py). Runtime keys are the underscore spelling (mcp_render.normalize_runtime): hyphenated `name` -> underscore key.",
+  "contract": "adapter-socket",
+  "version": "1.1.0",
+  "descriptor_entry_shape": "name->{command,args?,env?}",
+  "management_mcp_name": "molecule-platform",
+  "required_tool": "provision_workspace",
+  "loaded_mcp_tools_field": "loaded_mcp_tools",
+  "runtime_present_field": "mcp_server_present",
+  "default_runtime": "openclaw",
+  "live_runtimes_ssot": "molecule_runtime.live_runtimes.LIVE_RUNTIMES",
+  "delivery_contract_ref": "../mcp/mcp-plugin-delivery.contract.json",
+  "socket_contract_ref": "./adapter-socket.contract.md",
+  "seam_ownership": "Per ADR-004, each seam is owned by the template repo's adapter (the socket methods render/read/present/enumerate/materialize). Fields below name the ADAPTER method that owns the seam, not an engine symbol. `native_*` fields (path/format/identity-file) remain the descriptive contract each adapter's implementation must satisfy.",
+  "runtimes": {
+    "claude_code": {
+      "name": "claude-code",
+      "display_name": "Claude Code",
+      "template_repo": "molecule-ai-workspace-template-claude-code",
+      "adapter_module_symbol": "Adapter (ClaudeCodeAdapter)",
+      "status": "official",
+      "mcp": {
+        "native_path_pattern": "/configs/.claude/settings.json",
+        "path_resolves_home": false,
+        "format": "json",
+        "server_map_location": "key",
+        "key": "mcpServers",
+        "mcp_settings_path": "adapter.mcp_settings_path",
+        "register_mcp_server_hook": "adapter.register_mcp_server_hook (writes the native json mcpServers map)",
+        "renderer": "ClaudeCodeAdapter.register_mcp_server_hook",
+        "reader": "adapter (reads its own /configs/.claude/settings.json)",
+        "management_mcp_present": "adapter.management_mcp_present",
+        "enumerate_loaded_mcp_tools": "adapter.enumerate_loaded_mcp_tools (stdio-spawn native-config probe via enumerate_from_specs_async)",
+        "status": "implemented"
+      },
+      "persona": {
+        "native_identity_file": "system-prompt.md",
+        "materializer": "adapter.materialize_persona (writes system-prompt.md via persona_render.read_canonical_persona + write_persona)",
+        "status": "implemented"
+      }
+    },
+    "codex": {
+      "name": "codex",
+      "display_name": "Codex",
+      "template_repo": "molecule-ai-workspace-template-codex",
+      "adapter_module_symbol": "Adapter (CodexAdapter)",
+      "status": "official",
+      "mcp": {
+        "native_path_pattern": "~/.codex/config.toml",
+        "path_resolves_home": true,
+        "format": "toml",
+        "server_map_location": "table",
+        "table": "mcp_servers",
+        "mcp_settings_path": "adapter.mcp_settings_path",
+        "register_mcp_server_hook": "adapter.register_mcp_server_hook (merges resolved platform env literals into spec.env, then writes the native config.toml mcp_servers table)",
+        "renderer": "CodexAdapter.register_mcp_server_hook",
+        "reader": "adapter (reads its own ~/.codex/config.toml)",
+        "management_mcp_present": "adapter.management_mcp_present",
+        "enumerate_loaded_mcp_tools": "adapter.enumerate_loaded_mcp_tools (stdio-spawn native-config probe via enumerate_from_specs_async)",
+        "status": "implemented"
+      },
+      "persona": {
+        "native_identity_file": "AGENTS.md",
+        "materializer": "adapter.materialize_persona (writes AGENTS.md via persona_render.read_canonical_persona + write_persona)",
+        "status": "implemented"
+      }
+    },
+    "hermes": {
+      "name": "hermes",
+      "display_name": "Hermes Agent (Nous Research)",
+      "template_repo": "molecule-ai-workspace-template-hermes",
+      "adapter_module_symbol": "Adapter (HermesAgentAdapter)",
+      "status": "official",
+      "mcp": {
+        "native_path_pattern": "~/.hermes/config.yaml",
+        "path_resolves_home": true,
+        "home_override_env": "HERMES_HOME",
+        "format": "yaml",
+        "server_map_location": "key",
+        "key": "mcp_servers",
+        "mcp_settings_path": "adapter.mcp_settings_path",
+        "register_mcp_server_hook": "adapter.register_mcp_server_hook (writes the native config.yaml mcp_servers map, yaml.safe_dump sort_keys=False, additive/idempotent)",
+        "renderer": "HermesAgentAdapter.register_mcp_server_hook",
+        "reader": "adapter.enumerate_loaded_mcp_tools reads its own ~/.hermes/config.yaml mcp_servers (runtime#181 — the hermes adapter owns loaded-tools discovery, probing its native config directly)",
+        "management_mcp_present": "adapter.management_mcp_present",
+        "enumerate_loaded_mcp_tools": "adapter.enumerate_loaded_mcp_tools (reads own config.yaml mcp_servers, hands stdio specs to enumerate_from_specs_async)",
+        "status": "implemented"
+      },
+      "persona": {
+        "native_identity_file": "~/.hermes/SOUL.md",
+        "home_override_env": "HERMES_HOME",
+        "materializer": "adapter.materialize_persona (writes ~/.hermes/SOUL.md — hermes-agent's Layer-1 Agent Identity — from config.system_prompt via persona_render.read_canonical_persona + write_persona)",
+        "status": "implemented",
+        "note": "REQUIRED, not optional: the a2a-platform transport (MOLECULE_A2A_PLATFORM_ENABLED=true) forwards to hermes-agent WITHOUT config.system_prompt, so SOUL.md is the only channel that makes a concierge speak as the Org Concierge on that transport. Native identity convention is pinned against hermes-agent's documented prompt assembly (website/docs/developer-guide/prompt-assembly.md — Layer-1 = ~/.hermes/SOUL.md). Byte-identical to the persona the deleted engine helper wrote."
+      }
+    },
+    "openclaw": {
+      "name": "openclaw",
+      "display_name": "OpenClaw",
+      "template_repo": "molecule-ai-workspace-template-openclaw",
+      "adapter_module_symbol": "Adapter (OpenClawAdapter)",
+      "status": "official",
+      "is_operator_default": true,
+      "mcp": {
+        "native_path_pattern": "~/.openclaw/openclaw.json",
+        "path_resolves_home": true,
+        "format": "json",
+        "server_map_location": "key_path",
+        "key_path": "mcp.servers",
+        "mcp_settings_path": "adapter.mcp_settings_path",
+        "register_mcp_server_hook": "adapter.register_mcp_server_hook (merges resolved platform env literals into spec.env; owns its native renderer directly so it works on runtime versions predating any engine openclaw renderer)",
+        "renderer": "OpenClawAdapter.register_mcp_server_hook",
+        "reader": "adapter (reads its own ~/.openclaw/openclaw.json mcp.servers)",
+        "management_mcp_present": "adapter.management_mcp_present (reads ~/.openclaw/openclaw.json mcp.servers directly, same runtime-version reason as the render override)",
+        "enumerate_loaded_mcp_tools": "adapter.enumerate_loaded_mcp_tools (stdio-spawn native-config probe via enumerate_from_specs_async)",
+        "status": "implemented"
+      },
+      "persona": {
+        "native_identity_file": "SOUL.md",
+        "cleared_placeholder_files": [
+          "BOOTSTRAP.md",
+          "AGENTS.md"
+        ],
+        "materializer": "adapter.materialize_persona (writes SOUL.md + clears the placeholder files, via persona_render.read_canonical_persona + write_persona)",
+        "status": "implemented"
+      }
+    }
+  },
+  "not_yet_official": {
+    "$comment": "In LIVE_RUNTIMES / the manifest runtime enum but NOT yet natively supported through the full adapter socket: their MCP native format and/or persona convention is unverified. Per ADR-004 an unmigrated adapter that does not override a seam falls back to the BaseAdapter default (name-agnostic) — never a silent claude_code fallback. Listed for completeness; NOT part of the official set until the adapter overrides the socket against a live CLI.",
+    "google_adk": {
+      "name": "google-adk",
+      "aliases": [
+        "gemini"
+      ],
+      "template_repo": "molecule-ai-workspace-template-google-adk",
+      "mcp": {
+        "native_path_pattern": "unverified",
+        "format": "unverified",
+        "register_mcp_server_hook": "adapter (not yet overridden — falls back to BaseAdapter default)",
+        "status": "unverified",
+        "note": "google-adk wires MCP via its own McpToolset descriptor and the Gemini CLI reads its own settings mcpServers, but neither native location is pinned against a live runtime here, and the adapter does not yet override the MCP seam. The fail-loud native format contract now lives with the adapter (ADR-004), not the shared engine."
+      },
+      "persona": {
+        "native_identity_file": "GEMINI.md",
+        "materializer": "adapter.materialize_persona (target GEMINI.md — pinned convention; adapter override pending)",
+        "status": "convention-pinned",
+        "note": "Persona convention IS pinned (GEMINI.md); only the MCP native format is unverified. Adapter socket override lands when google-adk graduates to official."
+      }
+    }
+  }
+}

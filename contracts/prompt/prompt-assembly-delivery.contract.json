@@ -1,0 +1,154 @@
+{
+  "producer": "molecule_runtime.prompt.build_system_prompt",
+  "consumer": "active-runtime executor via config.system_prompt (set on the shared AdapterConfig by BaseAdapter._common_setup)",
+  "consumers": [
+    "molecule_runtime.adapter_base.BaseAdapter._common_setup (calls build_system_prompt, publishes config.system_prompt)",
+    "claude_sdk_executor (consumes config.system_prompt as SDK system_prompt=)",
+    "hermes executor (surfaces config.system_prompt as the {role:system} message)",
+    "codex executor (surfaces config.system_prompt as params.developerInstructions)",
+    "molecule_runtime.adapter_base.BaseAdapter.materialize_persona + each template adapter's override (native-identity sibling channel for CLIs that ignore config.system_prompt)",
+    "molecule_runtime.plugins.load_plugins (rules/*.md -> plugin.rules; *.md -> prompt_fragments)"
+  ],
+  "assembly_order": [
+    {
+      "layer": "base_frame",
+      "source": "canonical_text.base_platform_prompt",
+      "gated": false
+    },
+    {
+      "layer": "orchestrator_guardrail",
+      "source": "canonical_text.orchestrator_only_guardrail",
+      "gated": true,
+      "gate": "platform_guardrail (== mcp_server_present(); concierge-only)"
+    },
+    {
+      "layer": "platform_instructions",
+      "source": "build_system_prompt(platform_instructions=...) — resolved global->team->workspace scope from get_platform_instructions",
+      "gated": true,
+      "gate": "platform_instructions non-empty",
+      "heading": "# Platform Instructions"
+    },
+    {
+      "layer": "capabilities_preamble",
+      "source": "executor_helpers.get_capabilities_preamble(mcp=a2a_mcp) — generated from platform_tools.registry",
+      "gated": true,
+      "gate": "a2a_mcp (empty string for CLI-only runtimes) and non-empty"
+    },
+    {
+      "layer": "prompt_files",
+      "source": "build_system_prompt(prompt_files=config.prompt_files); fallback ['system-prompt.md'] when unset. Memory-snapshot names in prompt_files redirect to the durable mailbox copy when the kernel is on (RC #203).",
+      "gated": false
+    },
+    {
+      "layer": "memory_snapshots",
+      "source": "DEFAULT_MEMORY_SNAPSHOT_FILES auto-loaded when present and not already in prompt_files; read from the mailbox memory dir when the kernel is on, else config_path",
+      "gated": true,
+      "gate": "any of MEMORY.md / USER.md / CLAUDE.md / AGENTS.md / GEMINI.md / SOUL.md present (and not already loaded via prompt_files)"
+    },
+    {
+      "layer": "plugin_rules",
+      "source": "build_system_prompt(plugin_rules=plugins.rules) — every plugin's rules/*.md (auto-globbed by plugins.load_plugins). The concierge identity rides HERE (persona_delivery).",
+      "gated": true,
+      "gate": "plugin_rules non-empty",
+      "heading": "## Platform Rules"
+    },
+    {
+      "layer": "plugin_prompts",
+      "source": "build_system_prompt(plugin_prompts=plugins.prompt_fragments [+ coordinator_prompt]) — every plugin's root *.md prompt fragments (excluding README/CHANGELOG/LICENSE/CONTRIBUTING/plugin.yaml)",
+      "gated": true,
+      "gate": "plugin_prompts non-empty",
+      "heading": "## Platform Guidelines"
+    },
+    {
+      "layer": "skills",
+      "source": "build_system_prompt(loaded_skills=...) — each LoadedSkill's name + description + instructions",
+      "gated": true,
+      "gate": "loaded_skills non-empty",
+      "heading": "## Your Skills"
+    },
+    {
+      "layer": "platform_tool_instructions",
+      "source": "executor_helpers.get_a2a_instructions(mcp=a2a_mcp) + get_hma_instructions() — A2A (inter-agent) + HMA (persistent memory) usage docs",
+      "gated": false
+    },
+    {
+      "layer": "peers",
+      "source": "shared_runtime.build_peer_section(peers) — peer capability list from get_peer_capabilities",
+      "gated": true,
+      "gate": "peer section non-empty"
+    },
+    {
+      "layer": "delegation_failure_handling",
+      "source": "static '## Handling delegation failures' block emitted by build_system_prompt",
+      "gated": false
+    }
+  ],
+  "canonical_text": {
+    "base_platform_prompt": {
+      "symbol": "molecule_runtime.prompt.BASE_PLATFORM_PROMPT",
+      "always_first": true,
+      "text": "# You are a workspace on the Molecule AI platform\n\nYou are an AI agent running as a *workspace* inside an organization on the\nMolecule AI platform — a multi-agent system where agents collaborate as peers,\ndelegate work to one another over A2A, extend themselves with plugins and skills,\nand operate under shared platform governance and memory. Your specific role,\nname, and instructions are defined in the sections that follow; this frame is the\nplatform you operate within, shared by every agent on it."
+    },
+    "orchestrator_only_guardrail": {
+      "symbol": "molecule_runtime.prompt.ORCHESTRATOR_ONLY_GUARDRAIL",
+      "concierge_only": true,
+      "gate": "platform_guardrail (== mcp_server_present())",
+      "position": "immediately after the base frame, ahead of platform_instructions and the possibly-stale prompt_files; worded to OVERRIDE any later 'do the work yourself' text so a concierge on a stale template is still gagged from self-executing",
+      "text": "## Orchestrator-only — you NEVER do the work yourself (hard platform rule)\n\nYou are the platform/concierge **orchestrator** for this team. This rule is\nauthoritative and OVERRIDES anything below that suggests you should do work\nyourself.\n\nYou **do not do substantive work yourself** — no coding, no PR reviews, no\nresearch, no analysis, no writing deliverables, no long-running or recurring\njobs. You **respond, route, delegate, and report — nothing else.**\n\nFor **any** task, do exactly one of two things:\n1. **DELEGATE** it to an existing agent/workspace whose role fits — use your\n   delegation tools (list_peers to find the right agent, then delegate_task /\n   delegate_task_async). The doer is always someone else.\n2. If **NO** suitable workspace exists, **ASK THE USER to create one** (or to\n   confirm you should create it via the platform MCP). Do not improvise, do not\n   self-assign, and do not quietly start the work because no team exists yet.\n\nHard limits:\n- **Never adopt an open-ended or standing mission with no explicit\n  done-condition.** Every task you accept has a clear owner that is NOT you and\n  a clear finish line. Route recurring/never-ending work to a dedicated agent or\n  a scheduled workspace — never run the loop yourself.\n- **PR review is NOT yours.** Pull-request review is owned by the dedicated\n  review agent (e.g. the team's codex-reviewer). Never run a review pass\n  yourself and never appoint yourself to a standing \"watch and review PRs\"\n  mission — delegate every review, or ask the user to stand one up if none\n  exists.\n- **Don't self-wake into work.** An idle moment, a delegation result, or a\n  background notification is not a license to pick up substantive work on your\n  own. Acknowledge, route/delegate if there's a real owned task, then go quiet.\n\nWhen in doubt: delegate, or ask the user who should own it. You are the front\ndoor and the dispatcher — never the worker."
+    }
+  },
+  "concierge_guardrail_gate": {
+    "signal": "mcp_server_present()",
+    "signal_ref": "molecule_runtime.platform_agent_identity.mcp_server_present",
+    "call_site": "molecule_runtime.adapter_base.BaseAdapter._common_setup (is_platform_agent = mcp_server_present(); build_system_prompt(..., platform_guardrail=is_platform_agent))",
+    "default_on_error": false
+  },
+  "persona_delivery": {
+    "mechanism": "The concierge identity is delivered as an always-on rules/*.md that auto-globs into plugin.rules (plugins._load_single_plugin) and folds into build_system_prompt via plugin_rules=plugins.rules, landing in the '## Platform Rules' assembly layer. No per-template file and no code branch — the concierge-only-ness comes entirely from the delivery plugin's privileged install scope.",
+    "delivery_plugin": "molecule-platform-mcp (privileged: true — installable ONLY on the org-root kind=platform concierge; server-side enforced in molecule-core)",
+    "rule_file": "rules/concierge-identity.md",
+    "assembly_layer": "plugin_rules",
+    "composition_based": true,
+    "concierge_only": true,
+    "runtime_agnostic": true,
+    "no_per_template_system_prompt": true,
+    "no_kind_branch": true
+  },
+  "persona_materialization_ref": {
+    "registry_ref": "../adapter/official-runtimes.registry.json (per-runtime `persona` block: native_identity_file, materializer, status). Reconciled but NOT byte-identical and NOT gated: across the official runtimes the native_identity_file and status match; the materializer descriptions differ in phrasing (this contract names the concrete adapter class, e.g. ClaudeCodeAdapter.materialize_persona, where the registry uses the generic `adapter.materialize_persona (...)`), and this contract additionally lists google_adk (not_yet_official in the registry — persona convention pinned, MCP native format unverified). This is a documentation-level mirror, kept consistent by review, not a codegen'd projection.",
+    "socket_method_ref": "../adapter/adapter-socket.contract.md §4 — materialize_persona (dispatch-MUST): writes the canonical persona into THIS runtime's native identity file",
+    "canonical_reader": "molecule_runtime.persona_render.read_canonical_persona (sources the runtime-agnostic canonical persona from prompt_files; fallback system-prompt.md)",
+    "delivery_vs_materialization": "THIS contract owns prompt ASSEMBLY (the ordered layers + the canonical base/guardrail text) and the persona-DELIVERY convention (concierge identity as a management-plugin rule). The registry + adapter socket own per-runtime persona MATERIALIZATION (which native file, which materializer). The disjunction — a runtime EITHER surfaces config.system_prompt into its model turn (§2) OR materialize_persona writes the persona into its native identity file (§4), exactly one channel per runtime — is owned by the adapter-socket contract, not restated here."
+  },
+  "runtimes": {
+    "claude_code": {
+      "native_identity_file": "system-prompt.md",
+      "materializer": "ClaudeCodeAdapter.materialize_persona",
+      "status": "implemented"
+    },
+    "codex": {
+      "native_identity_file": "AGENTS.md",
+      "materializer": "CodexAdapter.materialize_persona",
+      "status": "implemented"
+    },
+    "openclaw": {
+      "native_identity_file": "SOUL.md",
+      "cleared_placeholder_files": [
+        "BOOTSTRAP.md",
+        "AGENTS.md"
+      ],
+      "materializer": "OpenClawAdapter.materialize_persona",
+      "status": "implemented"
+    },
+    "hermes": {
+      "native_identity_file": "~/.hermes/SOUL.md",
+      "materializer": "HermesAgentAdapter.materialize_persona",
+      "status": "implemented"
+    },
+    "google_adk": {
+      "native_identity_file": "GEMINI.md",
+      "materializer": "GoogleAdkAdapter.materialize_persona",
+      "status": "convention-pinned"
+    }
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/prompt/prompt-assembly-delivery.schema.json",
+  "title": "Prompt-Assembly & Persona-Delivery Contract",
+  "description": "SSOT JSON-Schema (draft 2020-12) for how a Molecule workspace's system prompt is ASSEMBLED and how a persona / identity is DELIVERED. Sibling of ../mcp/mcp-plugin-delivery.schema.json: where THAT contract pins how the management-MCP descriptor is delivered into each runtime's native config (the runtime's TOOLS), THIS contract pins the ordered layers the shared engine composes into config.system_prompt (the runtime's PROMPT) and the composition-based, concierge-only convention by which a concierge's IDENTITY rides as an always-on management-plugin rule. Typed from molecule-ai-workspace-runtime: molecule_runtime.prompt.build_system_prompt (assembly order + BASE_PLATFORM_PROMPT + ORCHESTRATOR_ONLY_GUARDRAIL + the mcp_server_present-gated concierge-only guardrail), molecule_runtime.persona_render (_RUNTIME_PERSONA native identity files + read_canonical_persona + materialize_persona_for), and molecule_runtime.plugins (rules/*.md -> plugin.rules; *.md -> prompt_fragments). This schema does NOT re-declare the per-runtime persona MATERIALIZATION metadata — that is owned by ../adapter/official-runtimes.registry.json (each runtime's `persona` block) and the adapter socket method `materialize_persona` in ../adapter/adapter-socket.contract.md §4; this contract REFERENCES them and remains the SSOT for the ASSEMBLY ORDER, the canonical base/guardrail TEXT, and the persona-DELIVERY convention. Nothing here is invented — every field is derived from the current working engine.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "producer",
+    "consumers",
+    "assembly_order",
+    "canonical_text",
+    "concierge_guardrail_gate",
+    "persona_delivery",
+    "persona_materialization_ref",
+    "runtimes"
+  ],
+  "properties": {
+    "producer": {
+      "type": "string",
+      "description": "The single assembler that composes the ordered layers into config.system_prompt (e.g. molecule_runtime.prompt.build_system_prompt, driven by BaseAdapter._common_setup)."
+    },
+    "consumer": {
+      "type": "string",
+      "description": "Primary consumer of the assembled prompt (e.g. the active runtime executor via config.system_prompt)."
+    },
+    "consumers": {
+      "type": "array",
+      "description": "Full list of consumers/derivers of the assembled prompt and/or the delivered persona.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "assembly_order": {
+      "type": "array",
+      "description": "The ORDERED prompt-assembly layers, exactly as build_system_prompt appends them. Position in the array IS the layer order (first element = top of prompt). Each entry names one layer, whether it is gated, and what sources it. This ordering is the SSOT: the engine must consume it from here rather than hardcoding the sequence.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["layer", "source", "gated"],
+        "properties": {
+          "layer": {
+            "type": "string",
+            "description": "Stable identifier for the assembly layer (e.g. base_frame, orchestrator_guardrail, platform_instructions, capabilities_preamble, prompt_files, memory_snapshots, plugin_rules, plugin_prompts, skills, platform_tool_instructions, peers, delegation_failure_handling)."
+          },
+          "source": {
+            "type": "string",
+            "description": "Where this layer's content comes from (a canonical_text key, a build_system_prompt parameter, a runtime-generated helper, or an on-disk convention)."
+          },
+          "gated": {
+            "type": "boolean",
+            "description": "Whether this layer is conditionally injected (true) or always present (false)."
+          },
+          "gate": {
+            "type": "string",
+            "description": "For a gated layer: the condition under which it is injected (e.g. 'platform_guardrail (== mcp_server_present())', 'platform_instructions non-empty', 'a2a_mcp'). Absent for ungated layers."
+          },
+          "heading": {
+            "type": "string",
+            "description": "The literal markdown heading the assembler prepends for this layer, when it emits one (e.g. '# Platform Instructions', '## Platform Rules', '## Your Skills'). Absent when the layer emits raw content with no synthetic heading."
+          }
+        }
+      }
+    },
+    "canonical_text": {
+      "type": "object",
+      "description": "The canonical SSOT TEXT for the engine-owned prompt layers that today are hardcoded string constants in molecule_runtime.prompt. The engine should consume these from the contract rather than embedding them. Each entry pins the constant's runtime symbol name and its verbatim text.",
+      "additionalProperties": false,
+      "required": ["base_platform_prompt", "orchestrator_only_guardrail"],
+      "properties": {
+        "base_platform_prompt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["symbol", "always_first", "text"],
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "description": "Runtime symbol that today holds this text (molecule_runtime.prompt.BASE_PLATFORM_PROMPT)."
+            },
+            "always_first": {
+              "type": "boolean",
+              "description": "INVARIANT — the base frame is prepended to EVERY workspace's prompt, first, regardless of runtime or template. Pinned true."
+            },
+            "text": {
+              "type": "string",
+              "description": "Verbatim canonical base-platform-identity frame text."
+            }
+          }
+        },
+        "orchestrator_only_guardrail": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["symbol", "concierge_only", "gate", "position", "text"],
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "description": "Runtime symbol that today holds this text (molecule_runtime.prompt.ORCHESTRATOR_ONLY_GUARDRAIL)."
+            },
+            "concierge_only": {
+              "type": "boolean",
+              "description": "INVARIANT — injected ONLY for platform/concierge agents; a normal worker workspace MUST NOT receive it (workers must keep doing real work). Pinned true."
+            },
+            "gate": {
+              "type": "string",
+              "description": "The runtime-side signal that gates injection (platform_guardrail, wired == mcp_server_present())."
+            },
+            "position": {
+              "type": "string",
+              "description": "Where it is injected relative to other layers (immediately after the base frame, ahead of platform_instructions and the possibly-stale prompt_files), worded to override any later 'do the work yourself' text."
+            },
+            "text": {
+              "type": "string",
+              "description": "Verbatim canonical orchestrator-only guardrail text."
+            }
+          }
+        }
+      }
+    },
+    "concierge_guardrail_gate": {
+      "type": "object",
+      "description": "The gate that decides whether the orchestrator-only guardrail is injected. This is the runtime-side platform-ness signal — the SAME signal the MCP delivery contract's degrade gate keys on — reconciled here as the guardrail gate.",
+      "additionalProperties": false,
+      "required": ["signal", "signal_ref", "call_site", "default_on_error"],
+      "properties": {
+        "signal": {
+          "type": "string",
+          "description": "The boolean predicate that gates the guardrail (mcp_server_present())."
+        },
+        "signal_ref": {
+          "type": "string",
+          "description": "Where the signal is defined (molecule_runtime.platform_agent_identity.mcp_server_present)."
+        },
+        "call_site": {
+          "type": "string",
+          "description": "Where the gate is evaluated and passed into build_system_prompt (BaseAdapter._common_setup, platform_guardrail=is_platform_agent)."
+        },
+        "default_on_error": {
+          "type": "boolean",
+          "description": "INVARIANT — a predicate error must NEVER gag a worker nor crash boot: default to worker (no guardrail). Pinned false (== not a platform agent)."
+        }
+      }
+    },
+    "persona_delivery": {
+      "type": "object",
+      "description": "The persona-DELIVERY convention (this contract's own SSOT, distinct from per-runtime MATERIALIZATION): a concierge's identity is delivered as an always-on plugin RULE from the privileged management plugin — composition-based, concierge-only, runtime-agnostic. NO per-template system-prompt.md and NO `if kind == platform` branch.",
+      "additionalProperties": false,
+      "required": [
+        "mechanism",
+        "delivery_plugin",
+        "rule_file",
+        "assembly_layer",
+        "composition_based",
+        "concierge_only",
+        "runtime_agnostic",
+        "no_per_template_system_prompt",
+        "no_kind_branch"
+      ],
+      "properties": {
+        "mechanism": {
+          "type": "string",
+          "description": "How the identity is delivered (an always-on rules/*.md that auto-globs into plugin.rules and folds into build_system_prompt via plugin_rules=..., landing in the '## Platform Rules' layer)."
+        },
+        "delivery_plugin": {
+          "type": "string",
+          "description": "The privileged, concierge-only plugin that carries the identity rule (molecule-platform-mcp)."
+        },
+        "rule_file": {
+          "type": "string",
+          "description": "The rule file inside the delivery plugin that holds the concierge identity (rules/concierge-identity.md)."
+        },
+        "assembly_layer": {
+          "type": "string",
+          "description": "Which assembly_order layer the delivered rule lands in (plugin_rules, under the '## Platform Rules' heading)."
+        },
+        "composition_based": {
+          "type": "boolean",
+          "description": "INVARIANT — identity is COMPOSED in via a plugin rule, not baked per-template. Pinned true."
+        },
+        "concierge_only": {
+          "type": "boolean",
+          "description": "INVARIANT — the identity rides only on the privileged management plugin, which is installable ONLY on the org-root kind=platform concierge; a worker never receives it. Pinned true."
+        },
+        "runtime_agnostic": {
+          "type": "boolean",
+          "description": "INVARIANT — the rule is plain markdown folded by the runtime-agnostic assembler; no per-runtime persona branch is needed for the concierge identity. Pinned true."
+        },
+        "no_per_template_system_prompt": {
+          "type": "boolean",
+          "description": "INVARIANT — the concierge identity is NOT delivered via a per-template system-prompt.md (the pre-fix per-template-drift class). Pinned true."
+        },
+        "no_kind_branch": {
+          "type": "boolean",
+          "description": "INVARIANT — no `if kind == platform` special-case in the assembler; the concierge-only-ness comes from the plugin's install scope, not a code branch. Pinned true."
+        }
+      }
+    },
+    "persona_materialization_ref": {
+      "type": "object",
+      "description": "REFERENCE (not a re-declaration) to where the per-runtime persona MATERIALIZATION is owned. The concierge identity delivered as a plugin rule (persona_delivery) reaches the model via the assembled prompt; a runtime whose CLI reads a NATIVE identity file instead receives the same canonical persona through materialize_persona. Both are owned elsewhere; this contract points at them.",
+      "additionalProperties": false,
+      "required": ["registry_ref", "socket_method_ref", "canonical_reader", "delivery_vs_materialization"],
+      "properties": {
+        "registry_ref": {
+          "type": "string",
+          "description": "The SSOT for per-runtime native identity files (../adapter/official-runtimes.registry.json, each runtime's `persona` block: native_identity_file, materializer, status)."
+        },
+        "socket_method_ref": {
+          "type": "string",
+          "description": "The adapter-socket method that writes the canonical persona into a runtime's native identity file (../adapter/adapter-socket.contract.md §4, materialize_persona)."
+        },
+        "canonical_reader": {
+          "type": "string",
+          "description": "The runtime-agnostic reader that sources the canonical persona from prompt_files (molecule_runtime.persona_render.read_canonical_persona, fallback system-prompt.md)."
+        },
+        "delivery_vs_materialization": {
+          "type": "string",
+          "description": "Prose stating the seam: THIS contract owns prompt ASSEMBLY + the persona-DELIVERY convention; the registry + socket own per-runtime persona MATERIALIZATION; the disjunction (executor surfaces config.system_prompt XOR materialize_persona writes the native file) is owned by the socket contract §2/§4."
+        }
+      }
+    },
+    "runtimes": {
+      "type": "object",
+      "description": "Per-runtime persona native-identity-file view, RECONCILED with ../adapter/official-runtimes.registry.json's persona blocks (same runtimes, same native_identity_file, same materializer). Runtime keys are the underscore dispatch spelling (mcp_render.normalize_runtime). This block is the adapter-DELIVERY-facing mirror; the registry remains SSOT for the persona materialization metadata.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["native_identity_file", "materializer", "status"],
+        "properties": {
+          "native_identity_file": {
+            "type": "string",
+            "description": "The runtime's native identity file the canonical persona is materialized into (may be `unverified` for a fail-loud-stub runtime)."
+          },
+          "cleared_placeholder_files": {
+            "type": "array",
+            "description": "Baked generic placeholder files this runtime's materializer clears so they can't compete with the materialized identity (e.g. openclaw clears BOOTSTRAP.md / AGENTS.md).",
+            "items": { "type": "string" }
+          },
+          "materializer": {
+            "type": "string",
+            "description": "The adapter method that writes the native identity file (e.g. OpenClawAdapter.materialize_persona). ADR-004: owned by the template's adapter, not a shared-engine function."
+          },
+          "status": {
+            "type": "string",
+            "description": "Materialization status for this runtime (e.g. implemented, fail-loud-stub)."
+          }
+        }
+      }
+    }
+  }
+}

@@ -138,6 +138,64 @@ jobs:
         # the package + conftest fixtures separately).
         run: python -m pytest tests/test_cloudproviders_contract.py -q --noconftest
 
+  adapter-registry-conformance:
+    # ADR-004 §2: official-runtimes.registry.json is the SSOT for WHICH runtimes
+    # are natively supported; mcp-plugin-delivery.contract.json is SSOT for the
+    # MCP descriptor + gate tool. Their per-runtime native surfaces MUST stay
+    # RECONCILED (same runtime set, same native path/format/server-map key,
+    # same server-name/required-tool literals). This gate turns that prose
+    # invariant into a cross-file assertion — a one-sided edit reds here.
+    name: adapter-registry-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install --no-cache-dir pytest "jsonschema>=4.18"
+      - name: Reconcile the official runtime registry with the MCP delivery contract
+        run: python -m pytest tests/test_adapter_registry_contract.py -q --noconftest
+
+  prompt-canonical-text-conformance:
+    # TestSSOT: the prompt contract's embedded canonical_text (BASE_PLATFORM_PROMPT
+    # + ORCHESTRATOR_ONLY_GUARDRAIL) MUST stay byte-identical to the runtime
+    # producer (molecule_runtime.prompt). Offline leg validates the contract vs
+    # the vendored SSOT mirror; a runtime checkout (MOLECULE_RUNTIME_SRC) adds a
+    # live cross-repo leg. A silent drift un-gags a concierge / changes the
+    # platform identity frame.
+    name: prompt-canonical-text-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install --no-cache-dir pytest
+      - name: Prompt contract canonical text == runtime SSOT (byte-identical)
+        run: python -m pytest tests/test_prompt_canonical_text_contract.py -q --noconftest
+
+  platform-identity-gate-conformance:
+    # The wire-contract fail-closed enforcement schema (platform-identity-gate)
+    # run against its golden decision-table cases: every `pass` case validates,
+    # every `fail` case is rejected (anti-vacuous proof of the divergence-#5
+    # bypass class — online-claimed-without-loaded-proof).
+    name: platform-identity-gate-conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validators
+        run: pip install --no-cache-dir pytest "jsonschema>=4.18"
+      - name: Run the platform-identity fail-closed gate against golden cases
+        run: python -m pytest tests/test_platform_identity_gate_conformance.py -q --noconftest
+
   go-parity:
     name: go-parity
     runs-on: ubuntu-latest
@@ -168,7 +226,7 @@ jobs:
 
   all-required:
     name: all-required
-    needs: [validate, codegen-drift, contract-conformance, go-parity]
+    needs: [validate, codegen-drift, contract-conformance, adapter-registry-conformance, prompt-canonical-text-conformance, platform-identity-gate-conformance, go-parity]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:

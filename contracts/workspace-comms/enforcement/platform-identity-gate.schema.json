@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/workspace-comms/enforcement/platform-identity-gate.schema.json",
+  "title": "Workspace-Comms Platform-Identity Fail-Closed Gate — ENFORCEMENT PROFILE",
+  "description": "ENFORCEMENT overlay for the kind=platform (concierge) branch of register + heartbeat. The base register.schema.json / heartbeat.schema.json intentionally type mcp_server_present and loaded_mcp_tools as OPTIONAL because the Go binding tags are `,omitempty` and non-platform workspaces legitimately omit them — so a payload that omits both still VALIDATES against the base schema and silently bypasses the RCA #2970 / core#3082 fail-closed identity gate (registry-contract.md divergence #5). This file closes that vacuity WITHOUT over-constraining the wire: it pins, as machine-checkable draft-2020-12 conditionals, the EXACT tri-state semantics of the two Go gate helpers `platformAgentMCPServerPresent` (registry.go) and `platformAgentManagementMCPLoaded` / the heartbeat verified-ready loop. It is a PROFILE, not a second wire schema: the base schemas remain the wire-validity SSOT; this schema is what a conformance test evaluates to answer 'would the controlplane mark this concierge online, degraded, or failed?'. WIRE AUTHORITY: molecule-core workspace-server/internal/models/workspace.go (RegisterPayload.MCPServerPresent *bool, HeartbeatPayload.MCPServerPresent *bool + LoadedMCPTools []string) and internal/handlers/registry.go (platformAgentMCPServerPresent L735, platformAgentManagementMCPLoaded L765, register gate L956-987, heartbeat verified-ready gate L1720-1795) + internal/handlers/platform_agent.go (conciergePlatformMCPProvisionWorkspaceTool = mcp__molecule-platform__provision_workspace). The required tool id, server name, and required-verb literals are the SAME cross-repo SSOT pinned in contracts/mcp/mcp-plugin-delivery.contract.json (mcp_server_name=molecule-platform, required_tool=provision_workspace) and re-produced by molecule-ai-workspace-runtime/molecule_runtime/platform_agent_identity.py (MANAGEMENT_PROVISION_TOOL_ID).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "verdict", "payload"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["register", "heartbeat"],
+      "description": "Which wire message this payload is. `register` bodies carry no loaded_mcp_tools (that field lives only on the heartbeat struct); `heartbeat` bodies carry both tri-states. The verdict rules differ per kind, so the discriminator is required."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["online", "degraded", "failed", "not_platform"],
+      "description": "The controlplane gate outcome this instance asserts the `payload` produces. `not_platform` = the payload is not kind=platform and the whole gate does not apply (payload validates against the base schema, no tri-state requirement). `failed` = the fail-closed identity gate refuses online (mcp_server_present=false, or the register/heartbeat FAIL-CLOSED branch). `degraded` = kind=platform, mcp_server_present is true/nil, but the verified-ready proof (loaded_mcp_tools contains the required tool) is NOT yet present (held in provisioning / degraded — turn-dependent, NOT a wire error). `online` = the payload satisfies the full verified-ready gate. This field lets a conformance test pin BOTH the payload shape AND the expected gate branch, so the schema encodes the Go decision table rather than just 'is this JSON well-formed'.",
+      "$comment": "Decision table mirrored from registry.go: platformAgentMCPServerPresent(nil||true)=allow, (false)=fail-closed; heartbeat verified-ready requires conciergePlatformMCPProvisionWorkspaceTool in loaded_mcp_tools to reach online, else HELD in provisioning (=degraded verdict here)."
+    },
+    "payload": {
+      "description": "The register or heartbeat REQUEST body under test. It MUST also independently validate against the base register.schema.json#/properties/request or heartbeat.schema.json#/properties/request (this profile does not restate the full wire shape — it layers ONLY the platform-branch tri-state conditionals). The conditionals below are keyed off the `verdict` sibling so one file expresses all four Go gate branches.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "BRANCH not_platform — the gate does not apply. The payload is either kind absent/`workspace`. No tri-state requirement; the base schema alone governs. This branch exists so a conformance test can assert 'omitting the tri-states is CORRECT for a non-platform workspace' (the legitimate case the base optionality is FOR).",
+      "if": {
+        "properties": { "verdict": { "const": "not_platform" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "not": {
+              "properties": { "kind": { "const": "platform" } },
+              "required": ["kind"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "BRANCH failed — fail-closed identity gate. A kind=platform payload that affirmatively reports mcp_server_present=false is refused online on BOTH the register (registry.go L972) and heartbeat (L1734) paths. This is the ONLY tri-state value that fails closed: nil is ALLOW (legacy pre-#147 runtime, registry.go platformAgentMCPServerPresent) and true is allow. So the failed verdict REQUIRES mcp_server_present to be the literal false. (A missing MODEL secret also yields failed, but that is server-side DB state, not a wire field, so it is out of scope for a payload schema.)",
+      "if": {
+        "properties": { "verdict": { "const": "failed" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["kind", "mcp_server_present"],
+            "properties": {
+              "kind": { "const": "platform" },
+              "mcp_server_present": { "const": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "BRANCH degraded — kind=platform, mcp_server_present is present-and-true (a modern, contract-speaking concierge that has NOT reported false), but the verified-ready proof is absent: loaded_mcp_tools does NOT contain the required provision_workspace tool id (either omitted pre-first-turn, or present without it). Per the heartbeat verified-ready gate (registry.go L1785-1795) such a concierge is HELD in provisioning / degraded, NOT failed — the OMITTED-vs-[] distinction is load-bearing and legitimate here (registry-contract.md divergence #5). We require mcp_server_present=true (a degraded verdict is only reachable past the fail-closed branch), and we require the loaded-tool proof to be ABSENT. Register payloads carry no loaded_mcp_tools field at all, so a register degraded instance simply omits it.",
+      "if": {
+        "properties": { "verdict": { "const": "degraded" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": ["kind", "mcp_server_present"],
+            "properties": {
+              "kind": { "const": "platform" },
+              "mcp_server_present": { "const": true },
+              "loaded_mcp_tools": {
+                "type": "array",
+                "items": { "type": "string" },
+                "not": { "contains": { "$ref": "#/$defs/requiredProvisionTool" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "BRANCH online — the full verified-ready gate is satisfied. kind=platform, mcp_server_present=true, and loaded_mcp_tools contains the required provision_workspace tool id (registry.go verified-ready loop L1785: `t == conciergePlatformMCPProvisionWorkspaceTool`). This is ONLY reachable on a heartbeat (register has no loaded_mcp_tools field; a fresh register can at best reach degraded/provisioning until the first heartbeat carries the loaded set). Hence online REQUIRES kind=heartbeat. This is the anti-vacuous positive assertion the base schema cannot express: a platform heartbeat claiming online MUST carry the tri-states proving it.",
+      "if": {
+        "properties": { "verdict": { "const": "online" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "kind": { "const": "heartbeat" },
+          "payload": {
+            "required": ["kind", "mcp_server_present", "loaded_mcp_tools"],
+            "properties": {
+              "kind": { "const": "platform" },
+              "mcp_server_present": { "const": true },
+              "loaded_mcp_tools": {
+                "type": "array",
+                "items": { "type": "string" },
+                "contains": { "$ref": "#/$defs/requiredProvisionTool" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "requiredProvisionTool": {
+      "$comment": "The one tool id the core verified-ready gate matches literally (conciergePlatformMCPProvisionWorkspaceTool). Composed as mcp__<mcp_server_name>__<required_tool> from the cross-repo mcp-plugin-delivery.contract.json literals (molecule-platform / provision_workspace). Pinned as a const so a rename of either literal fails this schema AND the mcp-plugin-delivery contract's own drift gate.",
+      "const": "mcp__molecule-platform__provision_workspace"
+    },
+    "mcpToolId": {
+      "$comment": "RETAINED FOR DOCUMENTATION, NOT APPLIED per-entry. The mcp__<server>__<tool> form is the shape of the MANAGEMENT MCP's tool ids, but loaded_mcp_tools is NOT uniformly this shape: the runtime producer (platform_agent_identity.set_loaded_mcp_tools) passes the active runtime's init tool list VERBATIM, which legitimately includes built-in non-mcp__ ids (e.g. 'a2a', 'Bash', 'Read'); the Go fixture workspace_test.go itself uses loaded=['a2a', 'mcp__molecule-platform__provision_workspace']. Gating EVERY entry on this pattern would FALSE-FAIL a genuinely-online concierge. The gate's real semantics are membership-based (does the set CONTAIN mcp__molecule-platform__provision_workspace), so the branches above assert only contains/not-contains requiredProvisionTool and leave entries as free strings.",
+      "type": "string",
+      "pattern": "^mcp__[^_].*__.+$"
+    }
+  }
+}

@@ -92,7 +92,7 @@ var Contract = MCPPluginDeliveryContract{
 		Hook:            "InstallContext.register_mcp_server",
 		Impl:            "BaseAdapter.register_mcp_server_hook",
 		PresentProbe:    "BaseAdapter.management_mcp_present",
-		Dispatch:        "BaseAdapter default hook dispatches on self.name() via mcp_render.render_for_runtime/mcp_settings_path_for/management_mcp_present_for; per-template adapter override NOT required.",
+		Dispatch:        "ADR-004: the BaseAdapter default hook is NAME-AGNOSTIC (writes the generic JSON mcpServers map via mcp_render.render_json_mcp_servers on the default settings path; management_mcp_present via mcp_render.json_mcp_servers_has) — no self.name() dispatch, no engine per-runtime table. Each official adapter (claude-code/codex/hermes/openclaw) OVERRIDES register_mcp_server_hook + management_mcp_present to render/read its OWN native file; a not-yet-migrated adapter uses the base JSON default.",
 		ResolverDefault: "plugins_registry.resolve defaults an mcpServers-shaped plugin to MCPServerAdaptor (AdaptorSource.MCP_SERVER) for ANY runtime, so molecule-platform-mcp needs no per-runtime adapters/<runtime>.py.",
 	},
 	Runtimes: map[string]Runtime{
@@ -102,7 +102,7 @@ var Contract = MCPPluginDeliveryContract{
 			Key:          "mcpServers",
 			KeyPath:      "",
 			Table:        "",
-			Renderer:     "mcp_render.render_claude_settings",
+			Renderer:     "ClaudeCodeAdapter.register_mcp_server_hook",
 			Status:       "implemented",
 		},
 		"codex": {
@@ -111,7 +111,7 @@ var Contract = MCPPluginDeliveryContract{
 			Key:          "",
 			KeyPath:      "",
 			Table:        "mcp_servers",
-			Renderer:     "mcp_render.render_codex_config",
+			Renderer:     "CodexAdapter.register_mcp_server_hook",
 			Status:       "implemented",
 		},
 		"hermes": {
@@ -120,7 +120,7 @@ var Contract = MCPPluginDeliveryContract{
 			Key:          "mcp_servers",
 			KeyPath:      "",
 			Table:        "",
-			Renderer:     "mcp_render.render_hermes_config",
+			Renderer:     "HermesAgentAdapter.register_mcp_server_hook",
 			Status:       "implemented",
 		},
 		"openclaw": {
@@ -129,7 +129,7 @@ var Contract = MCPPluginDeliveryContract{
 			Key:          "",
 			KeyPath:      "mcp.servers",
 			Table:        "",
-			Renderer:     "mcp_render.render_openclaw_config",
+			Renderer:     "OpenClawAdapter.register_mcp_server_hook",
 			Status:       "implemented",
 		},
 	},

@@ -132,7 +132,7 @@
           },
           "renderer": {
             "type": "string",
-            "description": "Renderer function that emits this runtime's native config (e.g. mcp_render.render_claude_settings)."
+            "description": "The adapter method that renders this runtime's native config from the descriptor (e.g. ClaudeCodeAdapter.register_mcp_server_hook). ADR-004: owned by the template's adapter, not a shared-engine function."
           },
           "status": {
             "type": "string",
