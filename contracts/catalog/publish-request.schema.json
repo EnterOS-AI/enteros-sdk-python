@@ -41,7 +41,7 @@
       "type": "string",
       "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as plugin-manifest.schema.json; underscore aliases accepted.",
       "enum": [
-        "claude-code", "codex", "hermes", "openclaw", "crewai",
+        "claude-code", "codex", "hermes", "openclaw",
         "external", "claude_code"
       ]
     },
