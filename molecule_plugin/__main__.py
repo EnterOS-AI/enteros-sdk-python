@@ -6,6 +6,7 @@ Kinds:
 * ``workspace``     — a workspace-configs-template directory (config.yaml)
 * ``org``           — an org-template directory (org.yaml)
 * ``channel``       — a channel config YAML/JSON file (standalone or list)
+* ``repo-meta``     — a repo directory or repo-meta.yaml (CI routing manifest)
 
 Exit 0 on valid, 1 when errors found. Intended for CI and local author
 workflows before publishing. ``validate <path>`` (kind omitted) is kept as
@@ -21,6 +22,7 @@ from pathlib import Path
 from .channel import validate_channel_file
 from .manifest import validate_plugin
 from .org import validate_org_template
+from .validate_repo_meta import validate_repo_meta
 from .workspace import validate_workspace_template
 
 
@@ -96,16 +98,39 @@ def _validate_channel(paths: list[str], quiet: bool) -> int:
     return 0 if total == 0 else 1
 
 
+def _validate_repo_meta(paths: list[str], quiet: bool) -> int:
+    total_errors = 0
+    for raw in paths:
+        path = Path(raw)
+        if not path.exists():
+            print(f"✗ {path}: does not exist", file=sys.stderr)
+            total_errors += 1
+            continue
+        result = validate_repo_meta(path)
+        # Warnings are advisory (e.g. unknown capability that attaches no
+        # bundle) — printed but non-fatal.
+        for warn in result.warnings:
+            print(f"⚠ {warn.file}: {warn.message}", file=sys.stderr)
+        if result.ok:
+            if not quiet:
+                print(f"✓ {result.file}: valid repo-meta")
+            continue
+        total_errors += len(result.errors)
+        for err in result.errors:
+            print(f"✗ {err.file}: {err.message}", file=sys.stderr)
+    return 0 if total_errors == 0 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="molecule_plugin")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     v = sub.add_parser("validate", help="Validate Molecule AI artifacts")
-    v.add_argument("args", nargs="+", help="[kind] paths... — kind in {plugin,workspace,org,channel}; defaults to plugin")
+    v.add_argument("args", nargs="+", help="[kind] paths... — kind in {plugin,workspace,org,channel,repo-meta}; defaults to plugin")
     v.add_argument("--quiet", "-q", action="store_true")
 
     args = parser.parse_args(argv)
-    kinds = {"plugin", "workspace", "org", "channel"}
+    kinds = {"plugin", "workspace", "org", "channel", "repo-meta"}
     if args.args and args.args[0] in kinds:
         args.kind = args.args[0]
         args.paths = args.args[1:]
@@ -123,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         return _validate_dir("org template", args.paths, validate_org_template, args.quiet)
     if args.kind == "channel":
         return _validate_channel(args.paths, args.quiet)
+    if args.kind == "repo-meta":
+        return _validate_repo_meta(args.paths, args.quiet)
     return 2  # pragma: no cover
 
 
