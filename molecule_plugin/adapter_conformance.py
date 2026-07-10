@@ -7,10 +7,20 @@ battery that, given any runtime adapter class, asserts the adapter satisfies the
 MCP-config seam (native path/format/key + render / read / present-probe /
 enumerate), persona, and **prompt application** — that the assembled
 ``config.system_prompt`` actually reaches the model turn (via the executor's
-payload OR the materialized native identity file). An adapter that does not conform fails **its own** CI;
-the SDK's official-registry run (``TestOfficialRegistryConformance`` below)
-proves first-party support "e2e against the officially-supported ones"
-(claude-code / codex / hermes / openclaw).
+payload OR the materialized native identity file). The per-adapter battery is
+``AdapterConformance`` (below): each template repo inherits it against its own
+``Adapter``, so an adapter that does not conform fails **its own** CI.
+
+The aggregate "official-registry" run — a single SDK-side job that drives THIS
+battery across every runtime in ``contracts/adapter/official-runtimes.registry.json``
+at once (claude-code / codex / hermes / openclaw) to prove first-party support
+"e2e against the officially-supported ones" — is a STAGED / descriptive stage
+per ``adapter-socket.contract.md`` §8, NOT a shipped symbol: the adapters are
+vendored into their own template repos, so first-party proof today is the sum of
+those per-repo ``AdapterConformance`` runs, not one collected SDK-side class.
+(The registry-driven filename assertion in ``AdapterConformance`` — see
+``test_native_persona_file_matches_registry`` — is the SDK-side slice of that
+staged aggregate that CAN run offline against a passed-in adapter.)
 
 WHY it lives in the SDK, not the runtime engine
 -----------------------------------------------
@@ -52,6 +62,8 @@ plugs into the platform correctly", not "this runtime works end-to-end".
 from __future__ import annotations
 
 import inspect
+import json
+import pathlib
 
 import pytest
 
@@ -106,6 +118,48 @@ _SOCKET_METHODS = (
     # persona
     "materialize_persona",
 )
+
+# The OFFICIAL runtime registry (ADR-004 §2) — SSOT for each first-party
+# runtime's ``native_identity_file`` (the file its persona MUST materialize
+# into). Runtime keys inside ``runtimes`` are the underscore dispatch spelling;
+# each entry's ``name`` is the hyphenated id ``adapter.name()`` returns, which is
+# what we key the lookup on. Loaded once, lazily, so a template repo that vendors
+# this suite without the contracts tree present degrades to a clean skip rather
+# than an import-time error.
+_REGISTRY_PATH = (
+    pathlib.Path(__file__).resolve().parent.parent
+    / "contracts"
+    / "adapter"
+    / "official-runtimes.registry.json"
+)
+
+
+def _native_identity_file_by_runtime() -> "dict[str, str]":
+    """Map ``adapter.name()`` (hyphenated runtime id) -> the BASENAME of that
+    runtime's ``native_identity_file`` from the official-runtimes registry.
+
+    Only the OFFICIAL ``runtimes`` block is authoritative here (``not_yet_official``
+    runtimes have unpinned/unverified persona conventions, so we do not bind their
+    filename). The registry value may be a ``~/``-prefixed absolute-ish path
+    (hermes: ``~/.hermes/SOUL.md``) or a bare filename (``system-prompt.md``,
+    ``AGENTS.md``, ``SOUL.md``) — we compare on ``basename`` so both shapes bind
+    to the file the runtime actually reads its identity from. Returns ``{}`` if
+    the registry isn't present (a bare-vendored suite), which the caller turns
+    into a clean skip.
+    """
+    try:
+        registry = json.loads(_REGISTRY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, str] = {}
+    for entry in (registry.get("runtimes") or {}).values():
+        name = entry.get("name")
+        persona = entry.get("persona") or {}
+        native = persona.get("native_identity_file")
+        if isinstance(name, str) and isinstance(native, str) and native.strip():
+            out[name] = pathlib.PurePosixPath(native).name
+    return out
+
 
 # An identifier no adapter maps — used to prove fail-closed behaviour on an
 # UNSUPPORTED runtime. After ADR-004 moves the per-runtime shape INTO the adapter,
@@ -892,6 +946,74 @@ class AdapterConformance:
             f"into its native identity file (→ {written!r}; sentinel absent). The "
             "native identity file is this runtime's ONLY channel to the model turn "
             "(socket §4 persona seam)."
+        )
+
+    def test_native_persona_file_matches_registry(self, adapter, tmp_path):
+        """``materialize_persona`` MUST write the runtime's REGISTRY-PINNED native
+        identity file — bound to ``official-runtimes.registry.json`` (C3).
+
+        The check above proves the persona reaches the model turn, but for a
+        channel-A runtime (codex / hermes / claude-code) it ``return``s WITHOUT
+        ever calling ``materialize_persona`` or checking the filename — so a
+        regression that materializes into the WRONG file (or stops writing at all)
+        ships green. That is not academic for hermes: SOUL.md is hermes's SOLE
+        persona channel on the a2a-platform transport
+        (``MOLECULE_A2A_PLATFORM_ENABLED=true`` forwards to hermes-agent WITHOUT
+        ``config.system_prompt``), so a ``materialize_persona`` drop there is a
+        live persona-loss bug the channel-A path cannot see.
+
+        So — DECOUPLED from the channel-A/B classification, for EVERY official
+        runtime — assert the BASENAME of the file ``materialize_persona(config)``
+        writes EQUALS this runtime's ``native_identity_file`` in the registry
+        (``~/.hermes/SOUL.md`` → ``SOUL.md``; ``system-prompt.md``; ``AGENTS.md``).
+        Parametrized over the registry via ``adapter.name()``: an adapter whose
+        runtime is NOT in the official registry (a third-party adapter, or a bare
+        suite vendored without the contracts tree) is skipped with a reason —
+        the registry only pins FIRST-PARTY identity files."""
+        native_by_runtime = _native_identity_file_by_runtime()
+        if not native_by_runtime:
+            pytest.skip(
+                "official-runtimes.registry.json not resolvable from this suite's "
+                f"location ({_REGISTRY_PATH}); cannot bind persona filename to the "
+                "registry (bare-vendored suite — the template repo's own contracts "
+                "tree carries the SSOT)."
+            )
+        runtime = adapter.name()
+        expected = native_by_runtime.get(runtime)
+        if expected is None:
+            pytest.skip(
+                f"{runtime!r} is not an OFFICIAL runtime in "
+                "official-runtimes.registry.json — the registry only pins "
+                "first-party native identity files, so third-party adapters have "
+                "no registry-mandated persona filename to assert."
+            )
+
+        sentinel = "CONFORMANCE-PERSONA-FILENAME-SENTINEL-9c1d-do-not-drop"
+        cfg = self.make_config(tmp_path)
+        self.deliver_sentinel_persona(cfg, tmp_path, sentinel)
+
+        written = adapter.materialize_persona(cfg)
+        assert written is not None, (
+            f"{runtime!r}: materialize_persona wrote NO file, but the registry pins "
+            f"its native identity file to {expected!r}. Every official runtime MUST "
+            "materialize its persona into that native file (socket §4 persona seam) "
+            "— a hermes-class drop (SOUL.md is hermes's ONLY persona channel on the "
+            "a2a-platform transport) is exactly this failure."
+        )
+        actual = pathlib.PurePath(str(written)).name
+        assert actual == expected, (
+            f"{runtime!r}: materialize_persona wrote {str(written)!r} (basename "
+            f"{actual!r}), but official-runtimes.registry.json pins this runtime's "
+            f"native_identity_file to {expected!r}. The persona MUST land in the "
+            "file the runtime actually reads its identity from — a mismatch means "
+            "the assembled persona never reaches the model turn on transports that "
+            "rely on the native file (e.g. hermes SOUL.md on a2a-platform)."
+        )
+        native = _read_text(str(written))
+        assert native is not None and sentinel in native, (
+            f"{runtime!r}: materialize_persona wrote its registry-pinned file "
+            f"{expected!r} but the assembled persona (sentinel) is NOT in it — the "
+            "native identity file exists but does not carry the persona."
         )
 
 
