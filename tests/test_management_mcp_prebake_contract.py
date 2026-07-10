@@ -37,11 +37,29 @@ def test_management_mcp_server_block_shape():
     assert mms["npm_package"] == "@molecule-ai/mcp-server"
     assert mms["registry_scope"] == "@molecule-ai"
     assert mms["registry"].startswith("https://"), mms["registry"]
-    # pinned_version is a concrete semver SSOT, never a placeholder.
+    # pinned_version is a concrete semver SSOT (the deterministic bake target).
     assert re.fullmatch(r"\d+\.\d+\.\d+", mms["pinned_version"]), mms["pinned_version"]
-    # The launch shape references the package + the substitutable version.
+    # compatible_range is the semver RANGE the launch resolves against.
+    rng = mms["compatible_range"]
+    assert re.fullmatch(r"\^\d+\.\d+\.\d+", rng), rng
+    # The launch resolves the RANGE, not the exact pin, so any in-range baked
+    # version launches offline — the semver-range model that kills the
+    # bump-ahead-of-rebuild fail-close window.
     assert mms["npm_package"] in mms["launch"]
-    assert "<pinned_version>" in mms["launch"]
+    assert "<compatible_range>" in mms["launch"]
+    assert "<pinned_version>" not in mms["launch"]
+
+
+def test_pinned_version_satisfies_compatible_range():
+    """Guard-D drift-tolerant invariant: the concrete bake target MUST fall
+    inside the launch range (else a fresh image would bake something the
+    launch range rejects)."""
+    mms = _contract()["management_mcp_server"]
+    base = mms["compatible_range"].lstrip("^")
+    p = tuple(int(x) for x in mms["pinned_version"].split("."))
+    b = tuple(int(x) for x in base.split("."))
+    assert p[0] == b[0], f"pinned {mms['pinned_version']} outside range major {base}"
+    assert p >= b, f"pinned {mms['pinned_version']} below range floor {base}"
 
 
 def test_prebake_required_and_conformance_names_the_gate_tool():

@@ -56,7 +56,7 @@
       "type": "object",
       "description": "Governed spec for the concierge management-MCP npm server (@molecule-ai/mcp-server) and its BUILD-TIME pre-bake. SSOT for the pinned version: every runtime image reconciles its baked version to `pinned_version`, and the plugin fragment's launch pin reconciles too (Guard D). ADR-004: the base runtime owns the default pre-bake implementation; a template adapter overrides only for a divergent node location.",
       "additionalProperties": false,
-      "required": ["npm_package", "pinned_version", "registry", "registry_scope", "launch", "pin_ssot", "prebake"],
+      "required": ["npm_package", "pinned_version", "compatible_range", "registry", "registry_scope", "launch", "pin_ssot", "prebake"],
       "properties": {
         "npm_package": {
           "type": "string",
@@ -64,7 +64,11 @@
         },
         "pinned_version": {
           "type": "string",
-          "description": "SSOT pinned version of npm_package. The plugin fragment pin AND every runtime image's baked version MUST equal this (Guard D lockstep)."
+          "description": "The ONE concrete in-range version the CURRENT release's prebake bakes (a deterministic build target). Every runtime image built at this release bakes exactly this (Guard D: baked == pinned_version), and it MUST satisfy compatible_range. Bumping it + re-baking is a ROLLING update, NOT a lockstep cutover — older images that baked an earlier in-range version keep launching."
+        },
+        "compatible_range": {
+          "type": "string",
+          "description": "The semver RANGE the launch resolves against (e.g. `^1.8.0`). The plugin fragment + boot launch use `@molecule-ai/mcp-server@<compatible_range>`; `npx --prefer-offline` resolves it OFFLINE to the highest in-range version baked into THAT image, so every image launches whatever it holds and a version bump never fail-closes a not-yet-rebuilt image. Moves ONLY on a breaking (major) change."
         },
         "registry": {
           "type": "string",
