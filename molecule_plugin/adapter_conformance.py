@@ -608,21 +608,49 @@ class AdapterConformance:
     # ``contracts/adapter/adapter-socket.contract.md:145-146`` that §8 never
     # enforced. This section closes that gap.
     #
-    # THE INVARIANT IS A DISJUNCTION (typed from reality — do NOT collapse it)
-    # -----------------------------------------------------------------------
+    # THE INVARIANT IS A PINNED CHANNEL, NOT A FREE DISJUNCTION
+    # --------------------------------------------------------
     # There are two DISJOINT persona-delivery channels and each official runtime
-    # uses exactly ONE:
+    # uses EXACTLY ONE (adapter-socket.contract.md §2/§4: "exactly one channel
+    # carries the persona per runtime"):
     #   (A) executor-consumes-config.system_prompt — hermes (system message),
     #       codex (developerInstructions), claude-code (SDK system_prompt=).
+    #       The executor is BUILT FROM config and surfaces config.system_prompt
+    #       into its model-turn payload.
     #   (B) native-identity-file — openclaw's executor is built with only
     #       workspace_id + heartbeat and NEVER reads config.system_prompt; the
     #       persona reaches the model via the materialized native SOUL.md
-    #       (materialize_persona / §4 persona seam, adapter_base.py:544-546).
-    # A single "assert the executor injects config.system_prompt" check would
-    # FALSE-FAIL openclaw. So the conformance assertion is: EITHER the executor
-    # surfaces the persona into its model-turn payload (channel A) OR
-    # materialize_persona wrote it into the runtime's native identity file
-    # (channel B). One of the two MUST carry it.
+    #       (materialize_persona / §4 persona seam), which the adapter OVERRIDES
+    #       to own its native file.
+    #
+    # A FREE disjunction ("channel A OR channel B") is a FALSE-GREEN and must NOT
+    # be used. The base ``materialize_persona`` (adapter_base.py) writes the
+    # canonical persona into the DEFAULT ``system-prompt.md`` from
+    # ``config.prompt_files`` — and ``deliver_sentinel_persona`` below seeds
+    # exactly that. So channel B is satisfiable for ANY adapter that merely
+    # inherits the base materializer, INCLUDING a channel-A runtime whose executor
+    # DROPS config.system_prompt (the live hermes persona-drop bug). A free
+    # disjunction would let that drop pass via channel B — defeating the whole
+    # point of this section. (Proven: a DropAdapter whose executor retains nothing
+    # and inherits the base materializer passed green under the old free
+    # disjunction; see ``test_channel_a_drop_adapter_fails`` for the regression.)
+    #
+    # SO WE PIN THE CHANNEL PER RUNTIME:
+    #   1. Classify the runtime by whether its BUILT executor consumes
+    #      config.system_prompt (``_executor_consumes_config_prompt`` — the
+    #      executor exposes a config-consuming surface: a retained AdapterConfig,
+    #      a ``system_prompt`` attribute, or ``_build_initial_messages``).
+    #   2. A CHANNEL-A runtime (executor consumes config.system_prompt) MUST
+    #      satisfy channel A — the sentinel MUST appear in the executor's
+    #      model-turn payload. Channel B does NOT rescue it: an executor that
+    #      consumes the prompt but drops the sentinel is the hermes-class bug and
+    #      MUST fail.
+    #   3. Only a NATIVE-FILE-channel runtime (channel-B: executor takes no
+    #      prompt AND the adapter OVERRIDES materialize_persona to own a native
+    #      identity file — openclaw-class) may satisfy via channel B. Requiring
+    #      the override closes the base-materializer false-green: an adapter that
+    #      merely inherits the base default is NOT a genuine channel-B runtime and
+    #      cannot claim channel B.
     #
     # OFFLINE — no live model, no spawn
     # ---------------------------------
@@ -679,15 +707,25 @@ class AdapterConformance:
         system content — the STRONGEST channel-A signal (asserts the sentinel in
         the actual outbound payload, not merely retained on the config).
 
-        Returns the persona string if found via channel A, else ``None`` (→ the
-        disjunction falls through to the channel-B native-file assertion). A
-        template whose executor's send-path differs (no retained config, no
+        Returns the persona string if found via channel A, else ``None``. A
+        ``None`` here means the executor surfaced NO config.system_prompt text —
+        which is EITHER a genuine channel-B runtime (executor takes no prompt) OR
+        a channel-A runtime that DROPPED the prompt; the two are told apart by
+        ``_executor_consumes_config_prompt``, not by this text alone. A template
+        whose executor's send-path differs (no retained config, no
         ``_build_initial_messages``) OVERRIDES this to return the text its
         executor would emit — keeping the check offline and adapter-specific.
         """
         executor = await adapter.create_executor(config)
 
-        # Strongest signal: a real, offline message-builder (hermes).
+        # STRONGEST + AUTHORITATIVE signal: a real, offline message-builder
+        # (hermes). When present and it returns a message list, THAT list IS the
+        # outbound model-turn payload — so its system content is authoritative and
+        # we do NOT fall back to the retained config. This is load-bearing: an
+        # executor that retains config.system_prompt on ``_config`` but whose
+        # ``_build_initial_messages`` omits the {role:system} turn has DROPPED the
+        # persona (the live hermes bug); falling back to the retained ``_config``
+        # here would mask that drop and re-introduce the false-green.
         build = getattr(executor, "_build_initial_messages", None)
         if callable(build):
             try:
@@ -700,10 +738,12 @@ class AdapterConformance:
                     for m in messages
                     if isinstance(m, dict) and m.get("role") == "system"
                 )
-                if sys_text:
-                    return sys_text
+                # Authoritative: return the built system text (possibly "" — a
+                # drop), NOT the retained config. Empty => persona not carried.
+                return sys_text or None
 
-        # Retained-config shapes (codex: executor._config; claude: executor.system_prompt).
+        # Retained-config shapes for executors WITHOUT a message-builder
+        # send-path (codex: executor._config; claude: executor.system_prompt).
         inner_cfg = getattr(executor, "_config", None)
         if inner_cfg is not None:
             sp = getattr(inner_cfg, "system_prompt", None)
@@ -715,47 +755,143 @@ class AdapterConformance:
 
         return None
 
+    async def _executor_consumes_config_prompt(self, adapter, config) -> bool:
+        """CLASSIFY the runtime's persona channel by inspecting its BUILT executor.
+
+        Returns ``True`` when the executor CONSUMES ``config.system_prompt`` — a
+        CHANNEL-A runtime (hermes / codex / claude-code) that MUST carry the
+        persona in its model-turn payload. Returns ``False`` when the executor
+        takes NO prompt — a NATIVE-FILE (channel-B) runtime (openclaw), which
+        instead carries the persona via ``materialize_persona``.
+
+        This is the pin that turns the old free ``A OR B`` disjunction into
+        "satisfy THE channel this runtime uses". It is deliberately independent of
+        whether the sentinel is PRESENT — a channel-A runtime that consumes the
+        prompt but DROPS the sentinel still classifies channel-A (so it is judged
+        against channel A and fails), which is exactly the hermes persona-drop bug
+        this section exists to catch.
+
+        Detection is by the config-consuming SURFACE the executor exposes, the
+        same three shapes ``prompt_application_probe`` reads:
+          * ``_build_initial_messages`` — hermes' offline message builder that
+            emits the ``{role:system}`` turn from the retained config.
+          * a retained ``_config`` that carries a ``system_prompt`` attribute —
+            codex (``params.developerInstructions``) / hermes.
+          * a ``system_prompt`` attribute — claude-code's ``ClaudeSDKExecutor``.
+        openclaw's ``OpenClawA2AExecutor`` (built from workspace_id + heartbeat
+        only) exposes none of these → channel-B.
+
+        A template whose channel-A executor uses a different send-surface (no
+        retained config / no ``_build_initial_messages`` / no ``system_prompt``)
+        MUST override ``prompt_application_probe`` to return its payload text — and
+        because that override then returns non-None for a channel-A runtime, this
+        classifier need not be overridden in the common case; override it too only
+        if the executor deliberately exposes none of the surfaces above yet is
+        still channel-A.
+        """
+        executor = await adapter.create_executor(config)
+        if callable(getattr(executor, "_build_initial_messages", None)):
+            return True
+        inner_cfg = getattr(executor, "_config", None)
+        if inner_cfg is not None and hasattr(inner_cfg, "system_prompt"):
+            return True
+        if hasattr(executor, "system_prompt"):
+            return True
+        return False
+
+    def _overrides_materialize_persona(self, adapter) -> bool:
+        """True iff the adapter OVERRIDES ``materialize_persona`` (does not merely
+        inherit the ``BaseAdapter`` default).
+
+        The base default writes the canonical persona into the DEFAULT
+        ``system-prompt.md`` from ``config.prompt_files`` — which
+        ``deliver_sentinel_persona`` seeds — so it satisfies the channel-B probe
+        for ANY adapter, INCLUDING a channel-A runtime that dropped its prompt.
+        A GENUINE channel-B (native-file) runtime owns its native identity file by
+        OVERRIDING this method (openclaw → SOUL.md). Requiring the override is what
+        stops the base false-green from rescuing a channel-A drop."""
+        return (
+            type(adapter).materialize_persona
+            is not BaseAdapter.materialize_persona
+        )
+
     @pytest.mark.asyncio
     async def test_executor_or_persona_carries_system_prompt(
         self, adapter, tmp_path
     ):
-        """The assembled persona MUST reach the model turn (socket §2
-        ``create_executor`` mandate + §4 persona seam).
+        """The assembled persona MUST reach the model turn via THE channel this
+        runtime uses (socket §2 ``create_executor`` mandate + §4 persona seam).
 
-        DISJUNCTION typed from reality: EITHER the executor surfaces
-        ``config.system_prompt`` into its model-turn payload (channel A —
-        hermes/codex/claude-code) OR ``materialize_persona`` writes the persona
-        into the runtime's native identity file (channel B — openclaw's SOUL.md).
-        At least one MUST carry the unique sentinel; a runtime that satisfies
-        NEITHER drops the persona before the model (the hermes-class bug).
+        NOT a free ``A OR B`` disjunction — that is a false-green (the base
+        ``materialize_persona`` satisfies channel B for ANY adapter, so a
+        channel-A runtime that drops the prompt would pass via B). Instead we PIN
+        the channel per runtime (adapter-socket.contract.md §2/§4 "exactly one
+        channel carries the persona per runtime"):
 
-        Offline: no model is spawned. Channel A is read through the adapter's
-        ``prompt_application_probe`` hook (which builds the executor and returns
-        the text it would send); channel B is read from the file
-        ``materialize_persona`` writes."""
+          * CHANNEL-A runtime (its executor CONSUMES config.system_prompt —
+            hermes/codex/claude-code): the sentinel MUST appear in the executor's
+            model-turn payload. Channel B does NOT rescue it. An executor that
+            consumes the prompt but drops the sentinel is the live hermes
+            persona-drop bug and MUST fail here.
+          * NATIVE-FILE runtime (channel-B — executor takes no prompt AND the
+            adapter OVERRIDES materialize_persona to own its native identity file,
+            openclaw's SOUL.md): the sentinel MUST appear in that native file.
+
+        Offline: no model is spawned. The executor payload is read through the
+        adapter's ``prompt_application_probe`` hook; the native file through
+        ``materialize_persona``; the classification through
+        ``_executor_consumes_config_prompt`` / ``_overrides_materialize_persona``."""
         sentinel = "CONFORMANCE-PERSONA-SENTINEL-7f3a9e21-do-not-drop"
         cfg = self.make_config(tmp_path)
         self.deliver_sentinel_persona(cfg, tmp_path, sentinel)
 
-        # --- Channel A: the executor surfaces it into its model-turn payload.
-        via_executor = await self.prompt_application_probe(adapter, cfg)
-        carried_by_executor = bool(via_executor) and sentinel in via_executor
+        # Classify WHICH channel this runtime uses (independent of the sentinel).
+        consumes_config_prompt = await self._executor_consumes_config_prompt(
+            adapter, cfg
+        )
 
-        # --- Channel B: materialize_persona writes it into the native identity file.
-        carried_by_native_file = False
+        if consumes_config_prompt:
+            # CHANNEL-A runtime: the executor consumes config.system_prompt, so it
+            # MUST surface the sentinel into its model-turn payload. Channel B is
+            # NOT allowed to rescue a channel-A drop.
+            via_executor = await self.prompt_application_probe(adapter, cfg)
+            carried_by_executor = bool(via_executor) and sentinel in via_executor
+            assert carried_by_executor, (
+                f"{adapter.name()!r} is a CHANNEL-A runtime (its executor consumes "
+                "config.system_prompt) but the assembled persona did NOT reach its "
+                f"model-turn payload (prompt_application_probe → {via_executor!r} — "
+                "sentinel absent). An executor built from config.system_prompt that "
+                "drops it before the turn is the live hermes persona-drop bug "
+                "(socket contract create_executor MUST, §2). The native-file "
+                "channel (materialize_persona) does NOT rescue a channel-A runtime "
+                "— that would be the false-green this check exists to catch."
+            )
+            return
+
+        # NATIVE-FILE (channel-B) runtime: the executor takes no prompt. It is a
+        # GENUINE channel-B runtime ONLY if it OVERRIDES materialize_persona to own
+        # its native identity file — merely inheriting the base default (which
+        # writes system-prompt.md from prompt_files) is the false-green vector and
+        # does NOT make a channel-A drop legitimate.
+        assert self._overrides_materialize_persona(adapter), (
+            f"{adapter.name()!r}: its executor carries NO config.system_prompt "
+            "(so it cannot satisfy channel A) AND it does not override "
+            "materialize_persona (so it is not a genuine native-file/channel-B "
+            "runtime either — it would only pass via the BASE materializer's "
+            "system-prompt.md false-green). config.system_prompt has no channel to "
+            "reach the model turn: either surface it in the executor payload "
+            "(channel A) or override materialize_persona to write the runtime's "
+            "native identity file (channel B)."
+        )
         written = adapter.materialize_persona(cfg)
-        if written is not None:
-            native = _read_text(written)
-            carried_by_native_file = native is not None and sentinel in native
-
-        assert carried_by_executor or carried_by_native_file, (
-            f"{adapter.name()!r}: config.system_prompt did NOT reach the model turn. "
-            "Neither channel carried the persona: the executor's model-turn payload "
-            f"(channel A, via prompt_application_probe → {via_executor!r}) nor the "
-            "materialized native identity file (channel B, via materialize_persona) "
-            "contained the sentinel. An executor that builds config.system_prompt "
-            "but drops it before the turn is the live hermes persona-drop bug "
-            "(socket contract create_executor MUST, §2)."
+        native = _read_text(written) if written is not None else None
+        carried_by_native_file = native is not None and sentinel in native
+        assert carried_by_native_file, (
+            f"{adapter.name()!r} is a NATIVE-FILE (channel-B) runtime (its executor "
+            "takes no prompt) but materialize_persona did NOT write the persona "
+            f"into its native identity file (→ {written!r}; sentinel absent). The "
+            "native identity file is this runtime's ONLY channel to the model turn "
+            "(socket §4 persona seam)."
         )
 
 

@@ -150,7 +150,7 @@ and `molecule-ai-workspace-runtime/tests/` (each against its vendored byte-copy 
 this profile). It:
 1. loads `platform-identity-gate.cases.json`, strips the `$case` label, and asserts
    every `pass` element validates and every `fail` element does not (proves the
-   profile itself is non-vacuous — this repo's copy already passes: 7 pass / 7 fail,
+   profile itself is non-vacuous — this repo's copy already passes: 9 pass / 6 fail,
    validated 2026-07-09);
 2. feeds each impl's **real captured** register/heartbeat body (from 3.2 / 3.3) into
    the profile and asserts the expected `verdict`.
