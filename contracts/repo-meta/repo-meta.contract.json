@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "layer": "runtime-template",
+  "capabilities": ["adapter", "mcp-server-bake", "docker-image"],
+  "waivers": [
+    {
+      "bundle": "mcp-server-bake",
+      "until": "2026-09-01",
+      "reason": "blocked on molecule-core#1234 — bake infra flake; re-enable once the runner image lands"
+    }
+  ]
+}

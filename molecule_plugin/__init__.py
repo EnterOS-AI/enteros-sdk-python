@@ -67,16 +67,28 @@ from .channel import (  # noqa: F401
     validate_channel_config,
     validate_channel_file,
 )
+from .validate_repo_meta import (  # noqa: F401
+    CAPABILITY_RE,
+    KNOWN_CAPABILITIES,
+    LAYERS,
+    RepoMetaResult,
+    validate_repo_meta,
+    validate_repo_meta_data,
+)
 
 __version__ = "0.3.0"
 
 __all__ = [
     "AgentskillsAdaptor",
+    "CAPABILITY_RE",
     "DEFAULT_MEMORY_FILENAME",
     "InstallContext",
     "InstallResult",
+    "KNOWN_CAPABILITIES",
+    "LAYERS",
     "PLUGIN_YAML_SCHEMA",
     "PluginAdaptor",
+    "RepoMetaResult",
     "SKILLS_SUBDIR",
     "SKILL_COMPAT_MAX",
     "SKILL_DESC_MAX",
@@ -92,6 +104,8 @@ __all__ = [
     "validate_manifest",
     "validate_org_template",
     "validate_plugin",
+    "validate_repo_meta",
+    "validate_repo_meta_data",
     "validate_skill",
     "validate_workspace_template",
     "__version__",
