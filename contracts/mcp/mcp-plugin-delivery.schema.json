@@ -13,6 +13,7 @@
     "required_tool",
     "loaded_mcp_tools_field",
     "legacy_binary_path",
+    "management_mcp_server",
     "runtime_present_field",
     "producer",
     "consumer",
@@ -50,6 +51,70 @@
     "legacy_binary_path": {
       "type": "string",
       "description": "Filesystem path of the legacy MCP server binary that older presence probes checked (e.g. /opt/molecule-mcp-server)."
+    },
+    "management_mcp_server": {
+      "type": "object",
+      "description": "Governed spec for the concierge management-MCP npm server (@molecule-ai/mcp-server) and its BUILD-TIME pre-bake. SSOT for the pinned version: every runtime image reconciles its baked version to `pinned_version`, and the plugin fragment's launch pin reconciles too (Guard D). ADR-004: the base runtime owns the default pre-bake implementation; a template adapter overrides only for a divergent node location.",
+      "additionalProperties": false,
+      "required": ["npm_package", "pinned_version", "registry", "registry_scope", "launch", "pin_ssot", "prebake"],
+      "properties": {
+        "npm_package": {
+          "type": "string",
+          "description": "The npm package the management MCP launches (e.g. @molecule-ai/mcp-server)."
+        },
+        "pinned_version": {
+          "type": "string",
+          "description": "SSOT pinned version of npm_package. The plugin fragment pin AND every runtime image's baked version MUST equal this (Guard D lockstep)."
+        },
+        "registry": {
+          "type": "string",
+          "description": "The scoped npm registry base URL the package is published to / fetched from (anonymous read for the public org scope)."
+        },
+        "registry_scope": {
+          "type": "string",
+          "description": "The npm scope routed to `registry` (e.g. @molecule-ai)."
+        },
+        "launch": {
+          "type": "string",
+          "description": "The launch command shape the concierge boot uses; <pinned_version> is substituted."
+        },
+        "pin_ssot": {
+          "type": "string",
+          "description": "Prose: this contract is the version SSOT the plugin fragment + baked image reconcile to."
+        },
+        "prebake": {
+          "type": "object",
+          "description": "The build-time pre-bake requirement that makes the boot-time launch resolve offline (the launch-side of RCA #2970).",
+          "additionalProperties": false,
+          "required": ["required", "owner", "cache_home", "rationale", "conformance", "lockstep"],
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "Whether the pre-bake is mandatory for images that can host a concierge."
+            },
+            "owner": {
+              "type": "string",
+              "description": "Which layer implements the pre-bake (base-runtime default; adapter override only if needed)."
+            },
+            "cache_home": {
+              "type": "string",
+              "description": "HOME whose npm cache the bake must warm (the uid the gosu-dropped runtime reads), e.g. /home/agent."
+            },
+            "rationale": {
+              "type": "string",
+              "description": "Why the pre-bake is required (cold-pull -> ETARGET -> fail-close)."
+            },
+            "conformance": {
+              "type": "string",
+              "description": "The build-time offline self-check that gates the image."
+            },
+            "lockstep": {
+              "type": "string",
+              "description": "Guard D: baked == pinned_version == plugin fragment pin, enforced centrally."
+            }
+          }
+        }
+      }
     },
     "runtime_present_field": {
       "type": "string",
