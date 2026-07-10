@@ -155,6 +155,86 @@ def _suite() -> AdapterConformance:
     return AdapterConformance()
 
 
+# ---------------------------------------------------------------------------
+# C3: bind materialize_persona output to the registry's native_identity_file.
+# These fixtures take a REGISTRY runtime name (``hermes``) so the new
+# ``test_native_persona_file_matches_registry`` looks it up and pins the filename
+# — decoupled from the channel-A/B classification (hermes IS channel-A, yet its
+# native SOUL.md is still the pinned identity file the a2a-platform transport
+# reads). Only ``materialize_persona`` behaviour differs between them.
+# ---------------------------------------------------------------------------
+def _persona_or_none(config):
+    from molecule_runtime import persona_render
+
+    persona = persona_render.read_canonical_persona(
+        config.config_path, config.prompt_files
+    )
+    return persona if (persona or "").strip() else None
+
+
+class _HermesCorrectFileAdapter(
+    _base_adapter_boilerplate("hermes correct SOUL.md", "hermes")
+):
+    """A hermes-named adapter that materializes into the REGISTRY-pinned basename
+    (``SOUL.md``). MUST pass the filename assertion."""
+
+    async def create_executor(self, config: AdapterConfig):  # pragma: no cover
+        return _RetainedConfigDropExecutor(config)
+
+    def materialize_persona(self, config: AdapterConfig):
+        from pathlib import Path
+
+        persona = _persona_or_none(config)
+        if persona is None:
+            return None
+        target = Path(config.config_path) / "SOUL.md"
+        target.write_text(persona, encoding="utf-8")
+        return str(target)
+
+
+class _HermesWrongFileAdapter(
+    _base_adapter_boilerplate("hermes wrong file", "hermes")
+):
+    """A hermes-named adapter that materializes into the WRONG file
+    (``system-prompt.md`` instead of the registry-pinned ``SOUL.md``). MUST fail
+    the filename assertion — this is the regression the C3 check exists to catch."""
+
+    async def create_executor(self, config: AdapterConfig):  # pragma: no cover
+        return _RetainedConfigDropExecutor(config)
+
+    def materialize_persona(self, config: AdapterConfig):
+        from pathlib import Path
+
+        persona = _persona_or_none(config)
+        if persona is None:
+            return None
+        target = Path(config.config_path) / "system-prompt.md"
+        target.write_text(persona, encoding="utf-8")
+        return str(target)
+
+
+class _HermesDropAdapter(_base_adapter_boilerplate("hermes drop", "hermes")):
+    """A hermes-named adapter whose materialize_persona writes NOTHING (returns
+    None) — the persona-loss bug. MUST fail: the registry pins a native file that
+    the a2a-platform transport relies on, so 'no file' is a regression."""
+
+    async def create_executor(self, config: AdapterConfig):  # pragma: no cover
+        return _RetainedConfigDropExecutor(config)
+
+    def materialize_persona(self, config: AdapterConfig):
+        return None
+
+
+class _ThirdPartyAdapter(
+    _base_adapter_boilerplate("third-party", "some-third-party-runtime")
+):
+    """A NON-registry runtime — the filename check must SKIP (the registry only
+    pins first-party identity files)."""
+
+    async def create_executor(self, config: AdapterConfig):  # pragma: no cover
+        return _RetainsNothingExecutor()
+
+
 @pytest.mark.asyncio
 async def test_channel_a_drop_adapter_fails(tmp_path):
     """A channel-A runtime that consumes config but DROPS the persona MUST fail —
@@ -194,3 +274,51 @@ async def test_genuine_channel_b_native_file_adapter_passes(tmp_path):
     await _suite().test_executor_or_persona_carries_system_prompt(
         _ChannelBNativeFileAdapter(), tmp_path
     )
+
+
+# ---------------------------------------------------------------------------
+# C3 regression: materialize_persona output bound to the registry's
+# native_identity_file (test_native_persona_file_matches_registry).
+# ---------------------------------------------------------------------------
+def test_registry_persona_file_correct_basename_passes(tmp_path):
+    """A hermes adapter that materializes into the registry-pinned ``SOUL.md``
+    MUST pass the filename assertion."""
+    # Must not raise.
+    _suite().test_native_persona_file_matches_registry(
+        _HermesCorrectFileAdapter(), tmp_path
+    )
+
+
+def test_registry_persona_wrong_file_fails(tmp_path):
+    """A hermes adapter that materializes into the WRONG file (not the pinned
+    ``SOUL.md``) MUST fail — the core C3 regression: today's channel-A path never
+    checks the filename, so this would ship green without the new assertion."""
+    with pytest.raises(AssertionError) as excinfo:
+        _suite().test_native_persona_file_matches_registry(
+            _HermesWrongFileAdapter(), tmp_path
+        )
+    msg = str(excinfo.value)
+    assert "native_identity_file" in msg and "SOUL.md" in msg, (
+        f"wrong-file adapter must fail citing the registry-pinned name; got: {msg!r}"
+    )
+
+
+def test_registry_persona_drop_fails(tmp_path):
+    """A hermes adapter whose materialize_persona writes NOTHING MUST fail — the
+    persona-loss bug the a2a-platform transport cannot otherwise surface."""
+    with pytest.raises(AssertionError) as excinfo:
+        _suite().test_native_persona_file_matches_registry(
+            _HermesDropAdapter(), tmp_path
+        )
+    assert "wrote NO file" in str(excinfo.value), (
+        f"drop adapter must fail as a no-file materialization; got: {excinfo.value!r}"
+    )
+
+
+def test_registry_persona_thirdparty_skips(tmp_path):
+    """A non-registry (third-party) runtime MUST skip — the registry only pins
+    first-party identity files, so there is no mandated filename to assert."""
+    with pytest.raises(pytest.skip.Exception):
+        _suite().test_native_persona_file_matches_registry(
+            _ThirdPartyAdapter(), tmp_path
+        )
