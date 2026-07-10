@@ -1,0 +1,191 @@
+{
+ "$comment": "Golden case-set for platform-identity-gate.schema.json. NOT a single canonical `.contract.json` (this profile encodes a 4-branch decision table; one instance cannot exhibit all branches), and deliberately named `.cases.json` so the top-level two-level `validate` glob (contracts/*/*.contract.json) does NOT pick it up \u2014 it is validated instead by the dedicated conformance test the enforcement plan prescribes (test_platform_identity_gate_conformance) which loads `pass`/`fail` arrays and asserts each element does/does-not validate. Every `pass` element MUST validate against the schema; every `fail` element MUST NOT \u2014 after the harness strips the `$case` annotation key (the schema is additionalProperties:false, so `$case` is a fixture label, not part of the instance). The tool ids and literals are the same cross-repo SSOT as mcp-plugin-delivery.contract.json.",
+ "pass": [
+  {
+   "$case": "not_platform \u2014 a plain workspace register that omits both tri-states is CORRECT (the legitimate case the base optionality exists for)",
+   "kind": "register",
+   "verdict": "not_platform",
+   "payload": {
+    "id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "url": "",
+    "agent_card": {
+     "name": "hermes worker"
+    },
+    "delivery_mode": "poll"
+   }
+  },
+  {
+   "$case": "not_platform \u2014 a plain workspace heartbeat with no tri-states",
+   "kind": "heartbeat",
+   "verdict": "not_platform",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90"
+   }
+  },
+  {
+   "$case": "failed \u2014 kind=platform register affirmatively reporting mcp_server_present=false (fail-closed, RCA #2970)",
+   "kind": "register",
+   "verdict": "failed",
+   "payload": {
+    "id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "url": "https://e2e.moleculesai.app/workspaces/0b8f2c4a/a2a",
+    "agent_card": {
+     "name": "Org Concierge"
+    },
+    "delivery_mode": "push",
+    "kind": "platform",
+    "mcp_server_present": false
+   }
+  },
+  {
+   "$case": "failed \u2014 kind=platform heartbeat reporting mcp_server_present=false",
+   "kind": "heartbeat",
+   "verdict": "failed",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": false
+   }
+  },
+  {
+   "$case": "degraded \u2014 kind=platform heartbeat, mcp present true, loaded_mcp_tools OMITTED (pre-first-turn; held in provisioning, NOT failed \u2014 OMITTED != [] is load-bearing)",
+   "kind": "heartbeat",
+   "verdict": "degraded",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true
+   }
+  },
+  {
+   "$case": "degraded \u2014 kind=platform heartbeat, mcp present true, loaded_mcp_tools present but WITHOUT the required provision_workspace tool (declared-but-not-loaded, #3082)",
+   "kind": "heartbeat",
+   "verdict": "degraded",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "mcp__molecule-platform__list_workspaces"
+    ]
+   }
+  },
+  {
+   "$case": "online \u2014 kind=platform heartbeat carrying the full verified-ready proof (mcp present + required tool loaded)",
+   "kind": "heartbeat",
+   "verdict": "online",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "mcp__molecule-platform__provision_workspace",
+     "mcp__molecule-platform__list_workspaces"
+    ]
+   }
+  },
+  {
+   "$case": "online heartbeat with MIXED tools (built-in a2a/Bash + the required mcp__ tool) \u2014 regression for the loaded_mcp_tools items-pattern over-constraint; real producers pass the runtime init tool list verbatim (workspace_test.go uses ['a2a', ...provision_workspace])",
+   "kind": "heartbeat",
+   "verdict": "online",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "a2a",
+     "Bash",
+     "Read",
+     "mcp__molecule-platform__provision_workspace",
+     "mcp__molecule-platform__list_workspaces"
+    ]
+   }
+  },
+  {
+   "$case": "degraded heartbeat carrying a bare non-mcp__ tool id (e.g. 'provision_workspace' WITHOUT the mcp__molecule-platform__ prefix) \u2014 the required tool is ABSENT, so this is legitimately DEGRADED, not a wire error. Entries are free strings (real producers pass built-in ids); only membership of mcp__molecule-platform__provision_workspace gates online. Was previously a fail-case only because the removed per-entry mcpToolId pattern over-rejected it.",
+   "kind": "heartbeat",
+   "verdict": "degraded",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "provision_workspace"
+    ]
+   }
+  }
+ ],
+ "fail": [
+  {
+   "$case": "ANTI-VACUOUS #1 \u2014 a kind=platform heartbeat that omits BOTH tri-states must NOT be accepted as `online` (this is the exact bypass divergence #5 describes: the base schema validates it, this profile rejects the online claim)",
+   "kind": "heartbeat",
+   "verdict": "online",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform"
+   }
+  },
+  {
+   "$case": "ANTI-VACUOUS #2 \u2014 claiming `online` while loaded_mcp_tools lacks the required provision_workspace tool must be rejected",
+   "kind": "heartbeat",
+   "verdict": "online",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "mcp__molecule-platform__list_workspaces"
+    ]
+   }
+  },
+  {
+   "$case": "register can never be `online` (no loaded_mcp_tools field on the register struct \u2014 online is heartbeat-only)",
+   "kind": "register",
+   "verdict": "online",
+   "payload": {
+    "id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "agent_card": {
+     "name": "Org Concierge"
+    },
+    "kind": "platform",
+    "mcp_server_present": true
+   }
+  },
+  {
+   "$case": "`failed` verdict with mcp_server_present=true is a contradiction \u2014 false is the only fail-closed tri-state value (nil=allow, true=allow)",
+   "kind": "heartbeat",
+   "verdict": "failed",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true
+   }
+  },
+  {
+   "$case": "`degraded` verdict but the payload actually carries the required tool \u2014 that is `online`, not degraded (mislabeled verdict must be caught)",
+   "kind": "heartbeat",
+   "verdict": "degraded",
+   "payload": {
+    "workspace_id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "kind": "platform",
+    "mcp_server_present": true,
+    "loaded_mcp_tools": [
+     "mcp__molecule-platform__provision_workspace"
+    ]
+   }
+  },
+  {
+   "$case": "`not_platform` verdict but the payload IS kind=platform \u2014 the gate DOES apply, so the not-platform escape must be rejected",
+   "kind": "register",
+   "verdict": "not_platform",
+   "payload": {
+    "id": "0b8f2c4a-1d3e-4f56-9a7b-2c8d4e6f1a90",
+    "agent_card": {
+     "name": "Org Concierge"
+    },
+    "kind": "platform",
+    "mcp_server_present": true
+   }
+  }
+ ]
+}
