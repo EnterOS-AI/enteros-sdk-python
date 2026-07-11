@@ -166,6 +166,20 @@ model): it builds the executor with a sentinel prompt and checks the sentinel
 appears in the payload the executor would send, or in the native file
 `materialize_persona` wrote.
 
+**Tool-trace MUST (behavioral).** The executor MUST emit one `agent_log`
+tool-call activity row per tool invocation, via the shared engine primitive
+`molecule_runtime.tool_trace.emit_tool_call(name, summary=None, status="ok")`,
+which POSTs `{activity_type:"agent_log", source_id/target_id:WORKSPACE_ID,
+summary, status, method:name}` to `{PLATFORM_URL}/workspaces/{WORKSPACE_ID}/activity`.
+Core turns these rows into BOTH the live MyChat progress line AND the persistent
+`ToolTraceChips` it reconstructs server-side (core#2636). An adapter whose executor
+invokes tools but emits none of these rows leaves the canvas unable to render what
+the agent is doing — the pre-ADR-004 state where only claude-code emitted. The emit
+is best-effort (never raises, short timeout); losing the telemetry MUST NOT abort the
+tool or the turn. The §8 conformance suite asserts this offline: it stubs
+`emit_tool_call`, drives one tool through the executor, and requires at least one emit
+whose `method` is the tool name.
+
 ---
 
 ## 3. The MCP-config seam (the load-bearing part)
@@ -435,8 +449,11 @@ the assembled `config.system_prompt` reaches the model turn** (the §2
 `create_executor` MUST): the suite builds the executor with a sentinel prompt and
 asserts the disjunction that EITHER the executor surfaces the sentinel into its
 model-turn payload OR `materialize_persona` (§4) wrote it into the native identity
-file (no live model — closes the hermes persona-drop gap); and every seam **fails
-closed** when the runtime is unmapped/unverified. An adapter that does not conform
+file (no live model — closes the hermes persona-drop gap); and tool-trace — the
+executor emits an `agent_log` tool-call row (via
+`molecule_runtime.tool_trace.emit_tool_call`) for each tool it invokes (stubbed +
+driven offline; an adapter that runs a tool but emits nothing fails); and every seam
+**fails closed** when the runtime is unmapped/unverified. An adapter that does not conform
 fails **its own** CI; first-party support is proven by running the suite across the
 `official-runtimes.registry.json` set. Enforcement is staged P1→P4 (see ADR-004
 guardrail matrix); until then this document is descriptive and the engine dispatch
