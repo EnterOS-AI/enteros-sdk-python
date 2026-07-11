@@ -948,6 +948,165 @@ class AdapterConformance:
             "(socket §4 persona seam)."
         )
 
+    # ==================================================================
+    # 2b. TOOL-TRACE — the executor emits an agent_log tool-call row per
+    #     tool invocation, so the canvas can render a ToolTraceChip
+    #     (adapter-socket.contract.md §2 tool-trace MUST + §8; core#2636).
+    # ==================================================================
+    # WHY this exists
+    # ---------------
+    # The workspace canvas renders a tool-call ONLY from an ``agent_log`` activity
+    # row POSTed to ``{PLATFORM_URL}/workspaces/{WORKSPACE_ID}/activity`` via the
+    # shared engine primitive ``molecule_runtime.tool_trace.emit_tool_call`` — core
+    # turns each row into BOTH the live MyChat progress line AND the persistent
+    # ``ToolTraceChip`` it reconstructs server-side (core#2636). Before ADR-004 ONLY
+    # claude-code emitted these rows (its ``_report_tool_use``); hermes/codex/openclaw
+    # ran tools but emitted NOTHING renderable, so their canvas showed a bare spinner.
+    # The fix makes the emit SDK-owned (one engine primitive every adapter calls at
+    # its tool site); this check is the gate that stops any adapter from silently
+    # skipping it.
+    #
+    # OFFLINE — no live model / npx / platform
+    # ----------------------------------------
+    # We NEVER boot a runtime, spawn a tool, or POST to a platform. We monkeypatch
+    # ``tool_trace.emit_tool_call`` with an async RECORDER (mirroring the
+    # ``_install_spawn_stub`` seam-patching idiom), build the executor offline, drive
+    # exactly ONE tool through the executor's own tool-observation seam via the
+    # overridable ``drive_one_tool`` hook, and assert the recorder captured at least
+    # one emit whose ``method`` is that tool's name. An adapter that runs a tool but
+    # never calls ``emit_tool_call`` records ZERO and FAILS.
+
+    #: The tool name the default ``drive_one_tool`` drives through the executor. A
+    #: template may reference it when overriding the hook.
+    TOOL_TRACE_SENTINEL_TOOL = "ConformanceSentinelTool"
+
+    async def drive_one_tool(self, adapter, executor, cfg):
+        """Drive EXACTLY ONE tool through ``executor``'s own tool-observation seam
+        so its ``emit_tool_call`` at the tool site fires — return the tool NAME the
+        executor should have emitted (``method``), or ``None`` if this adapter's
+        executor exposes no drivable offline tool seam (then the test SKIPS with a
+        loud pointer to override this hook).
+
+        The tool-dispatch seam DIFFERS per runtime and each executor lives in its
+        OWN template repo, so this default cannot know every shape. It drives the
+        common convention: an executor that centralizes its per-tool emit in a
+        single hook method (the point where it observes a tool invocation and is
+        expected to call ``emit_tool_call``). We probe, in order, the conventional
+        names such a hook uses and invoke the first one found with the sentinel tool
+        name, awaiting it if it is a coroutine:
+
+          * ``_report_tool_use`` — claude-code's ClaudeSDKExecutor tool-observation
+            hook (the battle-tested reference the shared primitive generalizes).
+          * ``_emit_tool_call`` / ``_on_tool_start`` / ``on_tool_call`` — the
+            conventional per-tool hook names an a2a-executor turn loop dispatches to
+            at ``on_tool_start`` (see the runtime a2a_executor SSE tool-start block).
+
+        Each is called as ``hook(name)`` first, then ``hook(name=name)``, so a hook
+        whose signature carries extra keyword-only params (``context_id=`` etc.)
+        with defaults is still driven. The hook is what MUST call
+        ``emit_tool_call`` — if the adapter wired the emit there, the recorder
+        captures it; if it did not, the recorder stays empty and the test fails.
+
+        A template whose executor centralizes its emit somewhere this default does
+        not reach OVERRIDES this hook to call its own tool site directly and return
+        the tool name (keeping the check offline + adapter-specific), exactly like
+        ``prompt_application_probe`` is overridable for the persona channel.
+        Returning ``None`` means "no drivable offline tool seam here" — a template
+        SHOULD override rather than leave the check skipped.
+        """
+        tool_name = self.TOOL_TRACE_SENTINEL_TOOL
+        for hook_name in (
+            "_report_tool_use",
+            "_emit_tool_call",
+            "_on_tool_start",
+            "on_tool_call",
+        ):
+            hook = getattr(executor, hook_name, None)
+            if not callable(hook):
+                continue
+            called = False
+            for invoke in (
+                lambda h=hook: h(tool_name),
+                lambda h=hook: h(name=tool_name),
+                lambda h=hook: h(tool_name=tool_name),
+            ):
+                try:
+                    result = invoke()
+                except TypeError:
+                    # Signature mismatch — try the next calling convention.
+                    continue
+                called = True
+                if inspect.isawaitable(result):
+                    await result
+                break
+            if called:
+                return tool_name
+        # No conventional tool-observation hook on this executor — the template must
+        # override drive_one_tool to point the check at its own tool site.
+        return None
+
+    @pytest.mark.asyncio
+    async def test_executor_emits_tool_call_activity(
+        self, adapter, tmp_path, monkeypatch
+    ):
+        """The executor MUST emit an ``agent_log`` tool-call activity row for each
+        tool it invokes, via ``molecule_runtime.tool_trace.emit_tool_call`` — so the
+        canvas can render a ToolTraceChip (adapter-socket.contract.md §2 tool-trace
+        MUST + §8; core#2636).
+
+        Fully OFFLINE: no model, no npx, no platform POST. We stub
+        ``tool_trace.emit_tool_call`` with an async recorder, build the executor,
+        drive ONE tool through it via ``drive_one_tool``, and require the recorder
+        captured >= 1 emit whose ``method`` is that tool's name. An adapter that runs
+        a tool but never calls ``emit_tool_call`` records ZERO and FAILS — the
+        pre-ADR-004 state where only claude-code emitted.
+        """
+        from molecule_runtime import tool_trace
+
+        captured: list[dict] = []
+
+        async def _recording_emit(name, summary=None, status="ok"):
+            # Mirror emit_tool_call's own signature so an adapter's call site binds
+            # identically to the real primitive (positional name, keyword
+            # summary/status). Record the tool name under ``method`` — the key the
+            # real payload carries + the field core reconstructs the chip from.
+            captured.append(
+                {"method": name, "summary": summary, "status": status}
+            )
+
+        # Patch the seam the adapters IMPORT + call. Adapters reference the emitter
+        # as ``molecule_runtime.tool_trace.emit_tool_call`` (a module attribute, not
+        # a bound method), so patching the attribute on the module is the seam every
+        # adapter's tool site resolves through — mirroring the ``_install_spawn_stub``
+        # ``monkeypatch.setattr(_probe, "_list_tools_from_mcp_server", ...)`` idiom.
+        monkeypatch.setattr(tool_trace, "emit_tool_call", _recording_emit)
+
+        cfg = self.make_config(tmp_path)
+        executor = await adapter.create_executor(cfg)
+
+        driven_tool = await self.drive_one_tool(adapter, executor, cfg)
+        if driven_tool is None:
+            pytest.skip(
+                f"{adapter.name()!r}: no drivable offline tool seam found on its "
+                "executor by the default drive_one_tool (it probes the conventional "
+                "per-tool hook names). This template MUST override "
+                "AdapterConformance.drive_one_tool to call its executor's own tool "
+                "site with a sentinel tool and return the tool name — otherwise the "
+                "tool-trace MUST (adapter-socket.contract.md §2) is unverified here."
+            )
+
+        emitted_methods = [c["method"] for c in captured]
+        assert driven_tool in emitted_methods, (
+            f"{adapter.name()!r}: its executor ran a tool "
+            f"({driven_tool!r}) but emitted NO agent_log tool-call row via "
+            "molecule_runtime.tool_trace.emit_tool_call — the canvas cannot render a "
+            "ToolTraceChip for it (core#2636). Every adapter that dispatches tools "
+            "MUST emit_tool_call at its tool site (adapter-socket.contract.md §2 "
+            "tool-trace MUST). Only claude-code did this before ADR-004; "
+            f"hermes/codex/openclaw emitted nothing renderable. Captured emits: "
+            f"{emitted_methods!r}."
+        )
+
     def test_native_persona_file_matches_registry(self, adapter, tmp_path):
         """``materialize_persona`` MUST write the runtime's REGISTRY-PINNED native
         identity file — bound to ``official-runtimes.registry.json`` (C3).
