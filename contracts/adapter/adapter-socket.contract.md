@@ -238,9 +238,7 @@ ADR-004 — no `self.name()` dispatch). **Semantics the render MUST honor:**
   reads) is exactly what this forbids.
 - **Fail-loud on an unverified native format** — raise `NotImplementedError`
   rather than guessing; the privileged-plugin install path turns that into a loud
-  boot failure. (An unmigrated adapter whose native format is not yet pinned —
-  e.g. google-adk — raises rather than writing a wrong file; the fail-loud stub
-  now lives with that adapter, not the shared engine.)
+  boot failure. The fail-loud stub belongs to that adapter, not the shared engine.
 
 An adapter **MAY** override this when its native write needs work the shared
 renderer can't do — e.g. **codex** and **openclaw** override to merge resolved
@@ -331,8 +329,7 @@ gateway/CLI reads a native identity file and never consumes the base-assembled
 adapter **OVERRIDES** to write its own native identity file: claude-code →
 `system-prompt.md`, openclaw → `SOUL.md` (and clears the `BOOTSTRAP.md` /
 `AGENTS.md` placeholders), codex → `AGENTS.md`, hermes → `~/.hermes/SOUL.md`
-(its Layer-1 Agent Identity); gemini/google-adk pins `GEMINI.md` (adapter override
-pending official graduation).
+(its Layer-1 Agent Identity).
 
 **Return semantics — best-effort, three outcomes:**
 - Returns the **path written** on success.
@@ -433,10 +430,9 @@ contracts already own.
   `loaded_mcp_tools` sit on the heartbeat payload and their nullable tri-state. This
   contract owns how the adapter **produces** those two values (the present-probe and
   the enumerate tri-state above); it does not restate the wire shape.
-- **`../plugin-manifest/`** and `live_runtimes.LIVE_RUNTIMES` own the runtime enum /
-  membership policy. The registry here is the curated **official** subset (the four
-  natively-supported runtimes); third-party adapters implement the same socket
-  without being listed.
+- **`runtime-id.schema.json`** owns the open RuntimeId shape. The registry here is
+  the curated **official** set (the four natively-supported runtimes); third-party
+  adapters implement the same socket without being listed.
 
 ## 8. Conformance (staged per ADR-004)
 

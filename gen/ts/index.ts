@@ -26,3 +26,4 @@
 export * from "./contract_gen";
 export * from "./workspace_comms_gen";
 export * from "./idle_prompt_gen";
+export * from "./runtime_ids.generated";

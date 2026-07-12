@@ -43,8 +43,7 @@ The real artifacts and their CI validator:
   checks. Captured DESCRIPTIVELY from `plugin_daemons.py` — the runtime's validation is
   skip-not-reject, so a malformed entry never fails a plugin install; this schema pins the
   well-formed shape.
-- **Canonical `runtimes` enum** — the SSOT reconciliation of the cross-artifact runtime
-  drift. The **hyphen** form is canonical (`claude-code`, matching the templates); the legacy
-  plugin **underscore** spelling (`claude_code`) is an accepted alias that
-  normalises to the hyphen form. The enum is the supported runtime set —
-  `claude-code`, `codex`, `hermes`, `openclaw`, `external`.
+- **Open RuntimeId** — a bounded, path-safe slug shared with workspace, org, and
+  catalog contracts. Official support is a separate registry, so a valid custom
+  adapter ID is not rejected. Known aliases such as `claude_code` normalize to
+  `claude-code`; unknown valid IDs remain unchanged.

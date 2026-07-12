@@ -68,11 +68,17 @@ def test_validate_manifest_accepts_minimal(tmp_path: Path):
     assert validate_manifest(p) == []
 
 
-def test_validate_manifest_rejects_unknown_runtime(tmp_path: Path):
+def test_validate_manifest_accepts_safe_custom_runtime(tmp_path: Path):
     p = tmp_path / "plugin.yaml"
-    p.write_text("name: demo\nruntimes: [martian]\n")
+    p.write_text("name: demo\nruntimes: [acme-agent]\n")
+    assert validate_manifest(p) == []
+
+
+def test_validate_manifest_rejects_unsafe_runtime_id(tmp_path: Path):
+    p = tmp_path / "plugin.yaml"
+    p.write_text("name: demo\nruntimes: ['../adapter']\n")
     errors = validate_manifest(p)
-    assert any("unknown runtime" in e for e in errors)
+    assert any("runtime id" in e for e in errors)
 
 
 def test_validate_manifest_accepts_hyphen_form(tmp_path: Path):

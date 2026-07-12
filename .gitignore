@@ -28,3 +28,6 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+
+# JavaScript build/install artifacts.
+node_modules/

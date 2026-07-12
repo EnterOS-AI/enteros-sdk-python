@@ -12,8 +12,8 @@ per RFC [molecule-core#3285](https://git.moleculesai.app/molecule-ai/molecule-co
 ## Derived from
 
 - `molecule-ai-workspace-template-claude-code/config.yaml` + `.molecule-ci/scripts/validate-workspace-template.py`
-  (required `name`/`runtime`/`template_schema_version`; `runtime` warns if outside the known set
-  `{claude-code, codex, hermes, openclaw}`).
+  (required `name`/`runtime`/`template_schema_version`; RuntimeId shape is
+  validated without restricting templates to the official first-party set).
 - `seo-agent`, `platform-agent` `config.yaml` for the wider field surface
   (providers, runtime_config, schedules, skills, env).
 
@@ -26,5 +26,5 @@ some have none. This schema models every observed location WITHOUT forcing one
 (`additionalProperties: true` at the top and on nested objects), so a real config in any
 style validates. The two `providers` shapes are typed separately by path: top-level
 `providers[]` is a list of provider **objects**; `runtime_config.providers[]` is a list of
-provider-name **strings**. `runtime` uses the canonical hyphen runtime enum (see
-[`../plugin-manifest/README.md`](../plugin-manifest/README.md)).
+provider-name **strings**. `runtime` uses the open bounded/path-safe RuntimeId
+contract (see [`../plugin-manifest/README.md`](../plugin-manifest/README.md)).

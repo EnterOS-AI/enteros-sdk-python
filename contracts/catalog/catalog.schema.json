@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/catalog.schema.json",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/catalog/catalog.schema.json",
   "title": "Marketplace Catalog Document (served index)",
   "description": "SSOT for the SERVED marketplace catalog document — the collection the storefront fetches and the server-side marketplace agent produces from the real listing repos. It wraps N catalog-entry envelopes plus catalog-level metadata. Each array item is a catalog-entry. IMPORTANT: this envelope schema validates the COMMON envelope ONLY — it deliberately does NOT re-encode catalog-entry's per-kind `spec` `oneOf` (this repo forbids cross-file `$ref`, and the codegen reads each schema standalone), so it is NOT a substitute for per-entry validation. catalog-entry.schema.json remains the authoritative per-listing shape; per-entry kind/spec validity is enforced OUTSIDE this schema — the marketplace agent validates every entry against catalog-entry.schema.json when it produces/consumes a catalog, and the contract test-suite validates the canonical entries against it here. Read-only projection: PRICE and ENTITLEMENT are deliberately NOT here (entitlement is entitlement.schema.json; pricing is a publish-request declaration + the agent's money layer, Phase 2). `schema_version` is const-pinned so a breaking catalog-document change surfaces as a visible MAJOR bump instead of a silent drift.",
   "type": "object",
@@ -57,11 +57,13 @@
     },
     "runtimeId": {
       "type": "string",
-      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as catalog-entry.schema.json / plugin-manifest.schema.json; underscore aliases accepted.",
-      "enum": [
-        "claude-code", "codex", "hermes", "openclaw",
-        "external", "claude_code"
-      ]
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+([-_][a-z0-9]+)*$",
+      "not": {
+        "pattern": "[^a-z0-9_-]"
+      },
+      "description": "Open, bounded, path-safe runtime identifier. Official first-party support is discovered separately; known aliases normalize without restricting third-party IDs."
     },
     "sourceRef": {
       "type": "string",

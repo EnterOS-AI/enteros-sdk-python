@@ -792,8 +792,8 @@ if (!process.argv.includes("--check")) {
 // over the catalog surface dirs). The mcp + workspace-comms output above is left
 // BYTE-IDENTICAL — this is a strictly-additional third file in the same
 // `package molcontracts`. Type/field names are STRUCTURAL (schema shape); the
-// `runtimes` SSOT enum is reconciled in plugin-manifest/plugin-manifest.schema.json
-// (canonical hyphen form). The per-kind catalog `spec` is a oneOf keyed on
+// RuntimeId is an open bounded/path-safe string generated from the adapter
+// contract. The per-kind catalog `spec` is a oneOf keyed on
 // `kind`; codegen models the discriminated spec types (CatalogEntryPluginSpec,
 // CatalogEntryWorkspaceTemplateSpec, CatalogEntryOrgTemplateSpec) as named
 // structs and the envelope's open `spec` field as map[string]any.

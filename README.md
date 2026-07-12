@@ -33,7 +33,7 @@ molecule-ai-sdk/
 │   ├── provision-request/  promote-request/  workspace-comms/
 │   └── cloudproviders.yaml + cloudproviders.schema.json
 ├── gen/{go,ts,python}/            # generated bindings (DO NOT EDIT)
-├── tools/gen-{go,ts,python}.mjs   # the generators (Node — no Go/Py toolchain in CI)
+├── tools/gen-runtimes.mjs + gen-{go,ts,python}.mjs  # Node generators
 ├── template/                      # starter plugin scaffold
 └── tests/
 ```
@@ -75,13 +75,13 @@ Direction: `*.contract.json ──validate──▶ *.schema.json`, and
 directory under [`contracts/`](./contracts) carries its own `README.md`
 describing that surface.
 
-Four CI gates back this (`.gitea/workflows/contracts-codegen-drift.yml`):
-`validate` (every instance validates against its schema), `codegen-drift`
-(committed `gen/` equals a fresh regen), `contract-conformance` (cloudproviders
-semantics), and `go-parity` (`gen/go` builds + vets + tests). Regenerate locally
-after any contract edit and commit the result:
+Eight jobs back this under the strict `all-required` aggregator in
+`.gitea/workflows/contracts-codegen-drift.yml`: schema validation, codegen drift,
+cloud-provider and adapter/prompt/platform conformance, Go parity, and published
+binding parity. Regenerate locally after any contract edit and commit the result:
 
 ```bash
+node tools/gen-runtimes.mjs
 node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs
 ```
 
@@ -203,12 +203,13 @@ You generally ship for path #2. If your plugin becomes popular enough to be
 promoted to "default," the Molecule AI team PRs a copy of your adaptor into the
 platform registry (path #1) so it survives upstream breakage.
 
-### Supported runtimes
+### Runtime identifiers and official support
 
-The canonical runtime list is the SSOT enum in
-`contracts/plugin-manifest/plugin-manifest.schema.json`: `claude-code`, `codex`,
-`hermes`, `openclaw`, `crewai`, `external` (the underscore alias
-`claude_code` is accepted). See the live list with `curl $PLATFORM_URL/plugins`.
+Runtime IDs are open, bounded, path-safe slugs defined by
+`contracts/adapter/runtime-id.schema.json`; third-party adapters are not blocked
+by a first-party allowlist. The separate official registry contains Claude Code,
+Codex, Hermes, and OpenClaw. Known aliases such as `claude_code` normalize to
+their canonical ID, while other valid IDs remain unchanged.
 
 ## Build and test
 

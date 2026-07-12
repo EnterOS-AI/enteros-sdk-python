@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/adapter/runtime-id.schema.json",
+  "title": "Runtime Identifier",
+  "description": "An open runtime identifier. Official first-party runtimes are discovered separately from official-runtimes.registry.json; this schema only enforces a bounded, path-safe slug.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[a-z0-9]+([-_][a-z0-9]+)*$",
+  "not": { "pattern": "[^a-z0-9_-]" }
+}

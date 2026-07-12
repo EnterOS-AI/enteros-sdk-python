@@ -173,8 +173,8 @@ function emitType(schema, suggested, ctx, source) {
   }
   if (typeof schema.$ref === "string") {
     // A $ref to an OBJECT-WITH-PROPERTIES def is a named type. A $ref to a
-    // scalar/enum/map def (e.g. a shared `runtimeId` string enum) is resolved
-    // INLINE to that def's TypeRef — so a shared enum becomes the underlying
+    // scalar/enum/map def (e.g. the shared open `runtimeId` string) is resolved
+    // INLINE to that def's TypeRef — so a shared scalar becomes the underlying
     // scalar at every use site instead of an un-emitted named alias.
     const target = defNodeOf(schema.$ref, ctx);
     if (target && !isStructDef(target)) {

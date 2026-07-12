@@ -20,7 +20,7 @@ export const CatalogSchemaVersion = "1" as const;
 // InstallRequestMode is pinned by catalog/install-request.schema.json#/properties/mode: Delivery mode. Pinned to `reconcile` — delivery reuses the existing reconcile engines (not a push). A push mode would be a deliberate MAJOR change.
 export const InstallRequestMode = "reconcile" as const;
 
-// PluginManifest: SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace plugin manifest — the publishable shape of a `plugin.yaml` artifact (molecule-ai-plugin-* repos), authored marketplace-side per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-plugin-molecule-careful-bash/plugin.yaml, image-gen/plugin.yaml, gh-identity/plugin.yaml, molecule-hitl/plugin.yaml, validated by each plugin repo's `.molecule-ci/scripts/validate-plugin.py` (required: name/version/description; runtimes must be a list; content is one of SKILL.md/hooks/skills/rules). The design is VS-Code-shaped: `engines` pins the minimum host version (like engines.vscode), and `contributes` is the OPEN, forward-compatible contribution surface — its KNOWN keys (skills/hooks/rules/mcpServers/commands, v1) are validated by shape while UNKNOWN contribution points (e.g. future themes/tabs/canvasElements) are tolerated (additionalProperties:true at the contributes level), so a newer plugin never fails this schema on an additive contribution point. The top-level `skills`/`hooks`/`rules` string lists mirror the real plugin.yaml v0 shorthand and remain accepted alongside the richer `contributes`. CANONICAL RUNTIMES: the `runtimes` enum is the SSOT reconciliation of the cross-artifact drift — the canonical form is the HYPHEN spelling (`claude-code`, matching the workspace/org templates and validate-workspace-template.py's known set); the legacy plugin UNDERSCORE spelling (`claude_code`) used by today's plugin.yaml files is accepted as an alias (normalizes to the hyphen form). The enum is the SUPPORTED runtime set — claude-code, codex, hermes, openclaw, external.
+// PluginManifest: SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace plugin manifest — the publishable shape of a `plugin.yaml` artifact (molecule-ai-plugin-* repos), authored marketplace-side per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-plugin-molecule-careful-bash/plugin.yaml, image-gen/plugin.yaml, gh-identity/plugin.yaml, molecule-hitl/plugin.yaml, validated by each plugin repo's `.molecule-ci/scripts/validate-plugin.py` (required: name/version/description; runtimes must be a list; content is one of SKILL.md/hooks/skills/rules). The design is VS-Code-shaped: `engines` pins the minimum host version (like engines.vscode), and `contributes` is the OPEN, forward-compatible contribution surface — its KNOWN keys are validated by shape while UNKNOWN contribution points are tolerated. RuntimeId is an open bounded/path-safe slug; official first-party support is discovered separately from the adapter registry and never acts as a universal allowlist.
 export interface PluginManifest {
   /** Plugin name (required by validate-plugin.py). The marketplace slug is derived from this. E.g. `molecule-careful-bash`, `image-gen`, `molecule-gh-identity`. */
   name: string;
@@ -40,7 +40,7 @@ export interface PluginManifest {
   entrypoint?: string;
   /** Host-version constraints (VS-Code `engines`). Pins the minimum Molecule host the plugin requires. */
   engines?: PluginManifestEngines;
-  /** Runtimes this plugin supports (plugin.yaml `runtimes`; validate-plugin.py requires a list). Items use the CANONICAL runtime enum (see schema description): hyphen form canonical, underscore form accepted as alias. */
+  /** Runtime IDs this plugin supports. Items use the open RuntimeId contract; known aliases normalize separately. */
   runtimes?: string[];
   /** v0 shorthand: bare skill names contributed by the plugin (plugin.yaml `skills: [careful-mode]`). The richer structured form is `contributes.skills`. */
   skills?: string[];
@@ -142,11 +142,11 @@ export interface PluginManifestCommandContribution {
   description?: string;
 }
 
-// WorkspaceTemplate: SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace workspace-template artifact — the publishable shape of a workspace-template `config.yaml` (molecule-ai-workspace-template-* repos). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-workspace-template-claude-code/config.yaml, seo-agent, platform-agent, validated by validate-workspace-template.py (required: name, runtime, template_schema_version; runtime warns if outside the known set {claude-code, codex, hermes, openclaw}). DELIBERATELY TOLERANT (additionalProperties:true at the top and on nested objects): the real configs are SHAPE-INCONSISTENT about where the model lives — some templates have top-level `models[]` + `runtime_config.model`; claude-code/seo-agent have `runtime_config.models[]` + top-level `model`; platform-agent has top-level `provider`; some have none. This schema models every observed location WITHOUT forcing one, so a real config in any of those styles validates. The two `providers` shapes are also inconsistent and are typed separately by path: top-level `providers[]` is a list of provider OBJECTS (name/auth_mode/model_prefixes/...); `runtime_config.providers[]` is a list of provider-name STRINGS. `runtime` uses the CANONICAL hyphen form (see plugin-manifest.schema.json for the runtimes SSOT reconciliation).
+// WorkspaceTemplate: SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace workspace-template artifact — the publishable shape of a workspace-template `config.yaml`. RuntimeId is an open bounded/path-safe slug; official first-party support is discovered separately. The schema is deliberately tolerant of the real configs' different model/provider locations while retaining their typed shapes.
 export interface WorkspaceTemplate {
   /** Template display name (required by validate-workspace-template.py). E.g. `Claude Code Agent`, `SEO Agent`. */
   name: string;
-  /** Runtime this template targets (required). Canonical hyphen form; the validator warns (does not reject) on values outside its known set. */
+  /** Open RuntimeId this template targets (required). */
   runtime: string;
   /** Template schema version (required; validate-workspace-template.py errors if missing — `template_schema_version: 1`). */
   template_schema_version: number;
@@ -300,7 +300,7 @@ export interface OrgTemplateWorkspaceNode {
   name: string;
   /** Free-text role description for the agent. */
   role?: string;
-  /** Optional per-workspace runtime override (else inherits `defaults.runtime`). Canonical hyphen form. */
+  /** Optional open RuntimeId override (else inherits `defaults.runtime`). */
   runtime?: string;
   /** Optional per-workspace tier override. */
   tier?: number;
@@ -382,7 +382,7 @@ export interface CatalogEntry {
   publisher?: string;
   /** Marketplace tags/keywords. */
   tags?: string[];
-  /** Runtimes the artifact supports/targets (canonical hyphen form; underscore aliases accepted). For org-template this is the union across its workspaces. */
+  /** Open RuntimeIds the artifact supports or targets. Known aliases normalize separately. For org-template this is the union across its workspaces. */
   runtimes?: string[];
   /** Capability/cost tier 1-4 (for templates; absent for plugins). */
   tier?: number;
@@ -564,7 +564,7 @@ export interface PublishRequest {
   publisher: string;
   /** Marketplace tags/keywords. */
   tags?: string[];
-  /** Runtimes the artifact targets (canonical hyphen form; underscore aliases accepted). */
+  /** Open RuntimeIds the artifact targets. Known aliases normalize separately. */
   runtimes?: string[];
   /** Requested listing visibility. */
   visibility?: string;

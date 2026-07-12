@@ -27,6 +27,10 @@
     "./idle-prompt": {
       "types": "./dist/idle_prompt_gen.d.ts",
       "default": "./dist/idle_prompt_gen.js"
+    },
+    "./runtimes": {
+      "types": "./dist/runtime_ids.generated.d.ts",
+      "default": "./dist/runtime_ids.generated.js"
     }
   },
   "files": [
@@ -35,10 +39,12 @@
     "contract_gen.ts",
     "workspace_comms_gen.ts",
     "catalog_gen.ts",
-    "idle_prompt_gen.ts"
+    "idle_prompt_gen.ts",
+    "runtime_ids.generated.ts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node runtime_ids.test.cjs",
     "prepack": "npm run build"
   },
   "devDependencies": {

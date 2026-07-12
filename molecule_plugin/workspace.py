@@ -17,17 +17,15 @@ from pathlib import Path
 
 import yaml
 
-
-# Runtimes the platform currently provisions for managed workspaces.
-SUPPORTED_RUNTIMES = frozenset(
-    {
-        "claude-code",
-        "claude_code",  # adapter dirs use underscores
-        "codex",
-        "hermes",
-        "openclaw",
-    }
+from ._runtime_ids import (
+    OFFICIAL_RUNTIME_IDS_WITH_ALIASES,
+    is_valid_runtime_id,
 )
+
+
+# Backward-compatible public name for first-party discovery. RuntimeId
+# validation is deliberately open and does not use this set as an allowlist.
+SUPPORTED_RUNTIMES = OFFICIAL_RUNTIME_IDS_WITH_ALIASES
 
 
 @dataclass
@@ -66,13 +64,13 @@ def validate_workspace_template(path: Path) -> list[ValidationError]:
         if field not in config or not config[field]:
             errors.append(ValidationError(str(config_path), f"missing required field: {field}"))
 
-    # Runtime must be one the platform knows about
+    # Runtime IDs are open; only their path-safe wire shape is constrained.
     runtime = config.get("runtime")
-    if runtime and runtime not in SUPPORTED_RUNTIMES:
+    if runtime and not is_valid_runtime_id(runtime):
         errors.append(
             ValidationError(
                 str(config_path),
-                f"runtime={runtime!r} — must be one of: {sorted(SUPPORTED_RUNTIMES)}",
+                f"runtime={runtime!r} — invalid runtime id",
             )
         )
 

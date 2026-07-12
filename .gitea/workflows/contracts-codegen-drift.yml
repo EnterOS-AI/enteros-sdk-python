@@ -90,6 +90,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Regenerate open RuntimeId schemas and bindings
+        run: node tools/gen-runtimes.mjs
       - name: Regenerate Go bindings (cloudprovider + molcontracts) from the SSOT
         run: node tools/gen-go.mjs
       - name: Regenerate TypeScript bindings (cloudprovider + contract/comms/catalog)
@@ -107,15 +109,22 @@ jobs:
           #   gen/ts/{index.ts,package.json,tsconfig.json}
           #   gen/python/{__init__.py,pyproject.toml}
           if ! git diff --exit-code -- \
+              contracts/plugin-manifest/plugin-manifest.schema.json \
+              contracts/workspace-template/workspace-template.schema.json \
+              contracts/org-template/org-template.schema.json \
+              contracts/catalog/catalog-entry.schema.json \
+              contracts/catalog/catalog.schema.json \
+              contracts/catalog/publish-request.schema.json \
+              molecule_plugin/_runtime_ids.py \
               gen/go/cloudprovider/cloudprovider.go \
               gen/go/molcontracts \
               gen/ts/cloudproviders.generated.ts \
-              gen/ts/contract_gen.ts gen/ts/workspace_comms_gen.ts gen/ts/catalog_gen.ts gen/ts/idle_prompt_gen.ts \
+              gen/ts/contract_gen.ts gen/ts/workspace_comms_gen.ts gen/ts/catalog_gen.ts gen/ts/idle_prompt_gen.ts gen/ts/runtime_ids.generated.ts \
               gen/python/cloudproviders.py \
-              gen/python/contract_gen.py gen/python/workspace_comms_gen.py gen/python/catalog_gen.py gen/python/idle_prompt_gen.py; then
+              gen/python/contract_gen.py gen/python/workspace_comms_gen.py gen/python/catalog_gen.py gen/python/idle_prompt_gen.py gen/python/runtime_ids_gen.py; then
             echo "::error::gen/ is out of date — committed generated bindings differ from a fresh"
             echo "::error::run of the generators. gen/ is NEVER hand-edited. Regenerate locally with"
-            echo "::error::'node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs'"
+            echo "::error::'node tools/gen-runtimes.mjs && node tools/gen-go.mjs && node tools/gen-ts.mjs && node tools/gen-python.mjs'"
             echo "::error::and commit the result."
             exit 1
           fi
@@ -224,9 +233,27 @@ jobs:
         working-directory: gen/go
         run: go test -run TestNoConsumerDependency -v .
 
+  bindings-parity:
+    name: bindings-parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and test TypeScript bindings
+        working-directory: gen/ts
+        run: npm ci && npm test
+      - name: Build Python bindings
+        run: pip install --no-cache-dir build && python -m build gen/python
+
   all-required:
     name: all-required
-    needs: [validate, codegen-drift, contract-conformance, adapter-registry-conformance, prompt-canonical-text-conformance, platform-identity-gate-conformance, go-parity]
+    needs: [validate, codegen-drift, contract-conformance, adapter-registry-conformance, prompt-canonical-text-conformance, platform-identity-gate-conformance, go-parity, bindings-parity]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:

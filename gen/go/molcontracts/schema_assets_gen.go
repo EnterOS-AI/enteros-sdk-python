@@ -16,9 +16,9 @@ package molcontracts
 const PluginManifestSchemaJSON = "{\n" +
 	"  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n" +
 	"  \"$id\": \"https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/plugin-manifest/plugin-manifest.schema.json\",\n" +
-	"  \"$comment\": \"contract-version 0.3.1 — daemons contribution semantics made first-class (skip-not-reject, sdk#51); 0.3.0 added the daemons capture (sdk#50); $id repointed from the archived molecule-contracts repo to this SSOT (fold: ai-sdk#41).\",\n" +
+	"  \"$comment\": \"contract-version 0.4.0 — RuntimeId is an open bounded/path-safe slug and official support is separate; 0.3.1 made daemons contribution semantics first-class.\",\n" +
 	"  \"title\": \"Marketplace Plugin Manifest Contract\",\n" +
-	"  \"description\": \"SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace plugin manifest — the publishable shape of a `plugin.yaml` artifact (molecule-ai-plugin-* repos), authored marketplace-side per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-plugin-molecule-careful-bash/plugin.yaml, image-gen/plugin.yaml, gh-identity/plugin.yaml, molecule-hitl/plugin.yaml, validated by each plugin repo's `.molecule-ci/scripts/validate-plugin.py` (required: name/version/description; runtimes must be a list; content is one of SKILL.md/hooks/skills/rules). The design is VS-Code-shaped: `engines` pins the minimum host version (like engines.vscode), and `contributes` is the OPEN, forward-compatible contribution surface — its KNOWN keys (skills/hooks/rules/mcpServers/commands, v1) are validated by shape while UNKNOWN contribution points (e.g. future themes/tabs/canvasElements) are tolerated (additionalProperties:true at the contributes level), so a newer plugin never fails this schema on an additive contribution point. The top-level `skills`/`hooks`/`rules` string lists mirror the real plugin.yaml v0 shorthand and remain accepted alongside the richer `contributes`. CANONICAL RUNTIMES: the `runtimes` enum is the SSOT reconciliation of the cross-artifact drift — the canonical form is the HYPHEN spelling (`claude-code`, matching the workspace/org templates and validate-workspace-template.py's known set); the legacy plugin UNDERSCORE spelling (`claude_code`) used by today's plugin.yaml files is accepted as an alias (normalizes to the hyphen form). The enum is the SUPPORTED runtime set — claude-code, codex, hermes, openclaw, external.\",\n" +
+	"  \"description\": \"SSOT JSON-Schema (draft 2020-12) for the Molecule marketplace plugin manifest — the publishable shape of a `plugin.yaml` artifact (molecule-ai-plugin-* repos), authored marketplace-side per RFC molecule-core#3285 (Tool-Contract SSOT & Codegen). DERIVED FROM THE REAL ARTIFACTS + their CI validator: molecule-ai-plugin-molecule-careful-bash/plugin.yaml, image-gen/plugin.yaml, gh-identity/plugin.yaml, molecule-hitl/plugin.yaml, validated by each plugin repo's `.molecule-ci/scripts/validate-plugin.py` (required: name/version/description; runtimes must be a list; content is one of SKILL.md/hooks/skills/rules). The design is VS-Code-shaped: `engines` pins the minimum host version (like engines.vscode), and `contributes` is the OPEN, forward-compatible contribution surface — its KNOWN keys are validated by shape while UNKNOWN contribution points are tolerated. RuntimeId is an open bounded/path-safe slug; official first-party support is discovered separately from the adapter registry and never acts as a universal allowlist.\",\n" +
 	"  \"type\": \"object\",\n" +
 	"  \"additionalProperties\": true,\n" +
 	"  \"required\": [\"name\", \"version\", \"description\"],\n" +
@@ -66,7 +66,7 @@ const PluginManifestSchemaJSON = "{\n" +
 	"    },\n" +
 	"    \"runtimes\": {\n" +
 	"      \"type\": \"array\",\n" +
-	"      \"description\": \"Runtimes this plugin supports (plugin.yaml `runtimes`; validate-plugin.py requires a list). Items use the CANONICAL runtime enum (see schema description): hyphen form canonical, underscore form accepted as alias.\",\n" +
+	"      \"description\": \"Runtime IDs this plugin supports. Items use the open RuntimeId contract; known aliases normalize separately.\",\n" +
 	"      \"items\": { \"$ref\": \"#/$defs/runtimeId\" }\n" +
 	"    },\n" +
 	"    \"skills\": {\n" +
@@ -100,15 +100,13 @@ const PluginManifestSchemaJSON = "{\n" +
 	"  \"$defs\": {\n" +
 	"    \"runtimeId\": {\n" +
 	"      \"type\": \"string\",\n" +
-	"      \"description\": \"CANONICAL runtime identifier. Hyphen form is canonical (`claude-code`); the underscore form (`claude_code`) is an accepted legacy alias that normalizes to the hyphen form. The enum is the supported runtime set plus that alias.\",\n" +
-	"      \"enum\": [\n" +
-	"        \"claude-code\",\n" +
-	"        \"codex\",\n" +
-	"        \"hermes\",\n" +
-	"        \"openclaw\",\n" +
-	"        \"external\",\n" +
-	"        \"claude_code\"\n" +
-	"      ]\n" +
+	"      \"minLength\": 1,\n" +
+	"      \"maxLength\": 64,\n" +
+	"      \"pattern\": \"^[a-z0-9]+([-_][a-z0-9]+)*$\",\n" +
+	"      \"not\": {\n" +
+	"        \"pattern\": \"[^a-z0-9_-]\"\n" +
+	"      },\n" +
+	"      \"description\": \"Open, bounded, path-safe runtime identifier. Official first-party support is discovered separately; known aliases normalize without restricting third-party IDs.\"\n" +
 	"    },\n" +
 	"    \"engines\": {\n" +
 	"      \"type\": \"object\",\n" +
