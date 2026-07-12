@@ -125,28 +125,5 @@
         "status": "implemented"
       }
     }
-  },
-  "not_yet_official": {
-    "$comment": "In LIVE_RUNTIMES / the manifest runtime enum but NOT yet natively supported through the full adapter socket: their MCP native format and/or persona convention is unverified. Per ADR-004 an unmigrated adapter that does not override a seam falls back to the BaseAdapter default (name-agnostic) — never a silent claude_code fallback. Listed for completeness; NOT part of the official set until the adapter overrides the socket against a live CLI.",
-    "google_adk": {
-      "name": "google-adk",
-      "aliases": [
-        "gemini"
-      ],
-      "template_repo": "molecule-ai-workspace-template-google-adk",
-      "mcp": {
-        "native_path_pattern": "unverified",
-        "format": "unverified",
-        "register_mcp_server_hook": "adapter (not yet overridden — falls back to BaseAdapter default)",
-        "status": "unverified",
-        "note": "google-adk wires MCP via its own McpToolset descriptor and the Gemini CLI reads its own settings mcpServers, but neither native location is pinned against a live runtime here, and the adapter does not yet override the MCP seam. The fail-loud native format contract now lives with the adapter (ADR-004), not the shared engine."
-      },
-      "persona": {
-        "native_identity_file": "GEMINI.md",
-        "materializer": "adapter.materialize_persona (target GEMINI.md — pinned convention; adapter override pending)",
-        "status": "convention-pinned",
-        "note": "Persona convention IS pinned (GEMINI.md); only the MCP native format is unverified. Adapter socket override lands when google-adk graduates to official."
-      }
-    }
   }
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/publish-request.schema.json",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/catalog/publish-request.schema.json",
   "title": "Marketplace Publish Request",
   "description": "SSOT for the payload an author submits to LIST or UPDATE an artifact in the marketplace — the producer -> marketplace-service contract (the `molecule-plugin` SDK's `publish` verb emits it; a manual publish sends the same shape). It names the artifact by KIND + a pinned `gitea://<owner>/<repo>[/<subpath>]#<ref>` source, plus listing metadata (name/description/tags/visibility/tier/runtimes). Optional `attestation` is the provenance/signing hook (present-but-optional so unsigned publish works today; the server agent may require it later). Optional `pricing` is a DECLARATION of the seller's intended price — DATA ONLY: the marketplace agent's payment integration (Stripe/Connect/payouts — owner-gated) consumes it; this contract performs NO payment processing and carries NO Stripe fields. The artifact's full manifest is NOT duplicated here — the agent resolves it from `source` and validates it against the sibling manifest contracts (plugin-manifest/, workspace-template/, org-template/).",
   "type": "object",
@@ -17,7 +17,7 @@
     "tags": { "type": "array", "description": "Marketplace tags/keywords.", "items": { "type": "string", "description": "A single tag." } },
     "runtimes": {
       "type": "array",
-      "description": "Runtimes the artifact targets (canonical hyphen form; underscore aliases accepted).",
+      "description": "Open RuntimeIds the artifact targets. Known aliases normalize separately.",
       "items": { "$ref": "#/$defs/runtimeId" }
     },
     "visibility": { "$ref": "#/$defs/visibility", "description": "Requested listing visibility." },
@@ -39,11 +39,13 @@
     },
     "runtimeId": {
       "type": "string",
-      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as plugin-manifest.schema.json; underscore aliases accepted.",
-      "enum": [
-        "claude-code", "codex", "hermes", "openclaw",
-        "external", "claude_code"
-      ]
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+([-_][a-z0-9]+)*$",
+      "not": {
+        "pattern": "[^a-z0-9_-]"
+      },
+      "description": "Open, bounded, path-safe runtime identifier. Official first-party support is discovered separately; known aliases normalize without restricting third-party IDs."
     },
     "sourceRef": {
       "type": "string",

@@ -1,7 +1,6 @@
 """Tests for the SDK's workspace/org/channel validators + CLI dispatch."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tomllib
 
@@ -39,6 +38,11 @@ def test_workspace_happy(tmp_path: Path):
     assert validate_workspace_template(tmp_path) == []
 
 
+def test_workspace_accepts_safe_custom_runtime(tmp_path: Path):
+    _write_yaml(tmp_path / "config.yaml", {"name": "x", "runtime": "acme-agent"})
+    assert validate_workspace_template(tmp_path) == []
+
+
 def test_workspace_missing_file(tmp_path: Path):
     errs = validate_workspace_template(tmp_path)
     assert len(errs) == 1 and "missing config.yaml" in errs[0].message
@@ -59,7 +63,7 @@ def test_workspace_not_object(tmp_path: Path):
 def test_workspace_validation_errors(tmp_path: Path):
     _write_yaml(
         tmp_path / "config.yaml",
-        {"name": "", "runtime": "wat", "tier": 9,
+        {"name": "", "runtime": "../wat", "tier": 9,
          "runtime_config": {"required_env": "nope", "timeout": "soon"}},
     )
     msgs = [e.message for e in validate_workspace_template(tmp_path)]
@@ -87,6 +91,44 @@ def test_workspace_runtime_config_none_ok(tmp_path: Path):
 def test_org_defaults_none_ok(tmp_path: Path):
     _write_yaml(tmp_path / "org.yaml", {"name": "T", "defaults": None, "workspaces": [{"name": "a"}]})
     assert validate_org_template(tmp_path) == []
+
+
+def test_org_default_runtime_uses_open_runtime_id_contract(tmp_path: Path):
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "defaults": {"runtime": "acme-agent"},
+            "workspaces": [{"name": "a"}],
+        },
+    )
+    assert validate_org_template(tmp_path) == []
+
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "defaults": {"runtime": "../acme"},
+            "workspaces": [{"name": "a"}],
+        },
+    )
+    messages = [error.message for error in validate_org_template(tmp_path)]
+    assert any("defaults.runtime" in message for message in messages)
+
+
+@pytest.mark.parametrize("runtime", [None, False, 0, ""])
+def test_org_rejects_explicit_invalid_runtime_values(tmp_path: Path, runtime) -> None:
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "defaults": {"runtime": runtime},
+            "workspaces": [{"name": "a", "runtime": runtime}],
+        },
+    )
+    messages = [error.message for error in validate_org_template(tmp_path)]
+    assert any("defaults.runtime" in message for message in messages)
+    assert any("workspaces[0:a]: runtime=" in message for message in messages)
 
 
 def test_supported_runtimes_contains_known():
@@ -130,6 +172,17 @@ def test_org_happy(tmp_path: Path):
                     "children": [{"name": "Dev"}],
                 }
             ],
+        },
+    )
+    assert validate_org_template(tmp_path) == []
+
+
+def test_org_accepts_safe_custom_runtime(tmp_path: Path):
+    _write_yaml(
+        tmp_path / "org.yaml",
+        {
+            "name": "T",
+            "workspaces": [{"name": "Custom", "runtime": "acme-agent"}],
         },
     )
     assert validate_org_template(tmp_path) == []
@@ -190,7 +243,7 @@ def test_org_various_errors(tmp_path: Path):
                 {
                     "name": "",
                     "tier": 8,
-                    "runtime": "wat",
+                    "runtime": "../wat",
                     "workspace_access": "invalid",
                     "channels": "nope",
                     "schedules": "nope",

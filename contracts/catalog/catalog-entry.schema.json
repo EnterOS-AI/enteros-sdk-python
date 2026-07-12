@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://git.moleculesai.app/molecule-ai/molecule-contracts/catalog/catalog-entry.schema.json",
+  "$id": "https://git.moleculesai.app/molecule-ai/molecule-ai-sdk/raw/branch/main/contracts/catalog/catalog-entry.schema.json",
   "title": "Marketplace Catalog-Entry Envelope Contract",
   "description": "SSOT JSON-Schema (draft 2020-12) for the unified Molecule marketplace catalog entry — the single envelope that lists ANY of the three artifact kinds (plugin / workspace-template / org-template) in the catalog, per RFC molecule-core#3285 (Phase 1, schema-only). The common envelope fields (id/kind/slug/name/version/source/publisher/tags/runtimes/tier/visibility) describe the listing; the per-kind `spec` is selected by a `oneOf` KEYED ON `kind` (kind:plugin -> pluginSpec; kind:workspace-template -> workspaceTemplateSpec; kind:org-template -> orgTemplateSpec). Because `kind` is pinned with a `const` in each oneOf branch, exactly one branch ever matches — the discriminator is unambiguous. The full artifact manifests live in the sibling contracts (plugin-manifest/, workspace-template/, org-template/); the catalog `spec` carries the listing-relevant projection of each (not the whole manifest). NOTE (Phase boundary): PRICE and ENTITLEMENT are deliberately NOT in this envelope — they are a catalog-layer concern (Phase 2), kept out of the schema-only artifact contract. `source` is a PINNED gitea source-contract string (`gitea://<owner>/<repo>[/<subpath>]#<ref>`) so a catalog entry always resolves to an immutable ref.",
   "type": "object",
@@ -26,7 +26,7 @@
     },
     "runtimes": {
       "type": "array",
-      "description": "Runtimes the artifact supports/targets (canonical hyphen form; underscore aliases accepted). For org-template this is the union across its workspaces.",
+      "description": "Open RuntimeIds the artifact supports or targets. Known aliases normalize separately. For org-template this is the union across its workspaces.",
       "items": { "$ref": "#/$defs/runtimeId" }
     },
     "tier": { "type": "integer", "minimum": 1, "maximum": 4, "description": "Capability/cost tier 1-4 (for templates; absent for plugins)." },
@@ -76,15 +76,13 @@
     },
     "runtimeId": {
       "type": "string",
-      "description": "Canonical runtime identifier (hyphen form). Same SSOT enum as plugin-manifest.schema.json; underscore aliases accepted.",
-      "enum": [
-        "claude-code",
-        "codex",
-        "hermes",
-        "openclaw",
-        "external",
-        "claude_code"
-      ]
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+([-_][a-z0-9]+)*$",
+      "not": {
+        "pattern": "[^a-z0-9_-]"
+      },
+      "description": "Open, bounded, path-safe runtime identifier. Official first-party support is discovered separately; known aliases normalize without restricting third-party IDs."
     },
     "pluginSpec": {
       "type": "object",
@@ -150,7 +148,14 @@
         "defaults": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Org-wide defaults summary (open object)."
+          "description": "Org-wide defaults summary (open object).",
+          "allOf": [
+            {
+              "properties": {
+                "runtime": { "$ref": "#/$defs/runtimeId", "description": "Open default RuntimeId." }
+              }
+            }
+          ]
         },
         "composition": { "$ref": "#/$defs/composition", "description": "Composition style: inline list, name->node map, or folder-tree (`!include`/`!external`)." }
       }

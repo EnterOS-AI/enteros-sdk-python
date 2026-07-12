@@ -175,7 +175,7 @@
     },
     "runtimes": {
       "type": "object",
-      "description": "Per-runtime rendering targets (settings path, format, renderer, status) for the descriptor. Keys are runtime identifiers (e.g. claude_code, codex, gemini_cli, hermes).",
+      "description": "Per-runtime rendering targets (settings path, format, renderer, status) for the descriptor. Keys are official runtime identifiers (for example claude_code, codex, hermes, openclaw).",
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",

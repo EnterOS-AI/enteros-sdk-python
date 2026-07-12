@@ -43,11 +43,8 @@ It captures four things:
    runtimes the **`native_identity_file` and `status` match**; the **materializer
    descriptions differ in phrasing** (this contract names the concrete adapter
    class, e.g. `ClaudeCodeAdapter.materialize_persona`, where the registry writes
-   the generic `adapter.materialize_persona (...)`), and this contract also lists
-   **`google_adk`**, which is `not_yet_official` in the registry (persona
-   convention pinned there, MCP native format still unverified). There is no gate
-   enforcing byte-equality — this is a documentation-level mirror, not a codegen'd
-   projection.
+   the generic `adapter.materialize_persona (...)`). There is no gate enforcing
+   byte-equality — this is a documentation-level mirror, not a codegen'd projection.
 4. **The persona-DELIVERY convention** — a concierge's identity is delivered as
    an **always-on plugin rule** from the privileged management plugin
    (composition-based, concierge-only, runtime-agnostic — **no** per-template
@@ -148,8 +145,5 @@ edit one without the other.
 - `assembly_order` models order **positionally** (array index). Layers 3–11 are
   conditionally emitted; only `base_frame`, `platform_tool_instructions`, and
   `delegation_failure_handling` are unconditional (`gated: false`).
-- The `runtimes` block lists `hermes` with `native_identity_file: ~/.hermes/SOUL.md`
-  (`status: implemented`) and includes `google_adk` (GEMINI.md,
-  `status: convention-pinned`) even though google-adk is `not_yet_official` in the
-  adapter registry — the persona convention there IS pinned; only its MCP native
-  format is unverified.
+- The `runtimes` block mirrors the four official adapters' native identity files;
+  `hermes` uses `~/.hermes/SOUL.md` with `status: implemented`.

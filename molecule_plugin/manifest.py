@@ -23,6 +23,11 @@ from typing import Any
 
 import yaml
 
+from ._runtime_ids import (
+    RUNTIME_ID_SCHEMA,
+    is_valid_runtime_id,
+)
+
 PLUGIN_YAML_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["name"],
@@ -37,8 +42,8 @@ PLUGIN_YAML_SCHEMA: dict[str, Any] = {
         "prompt_fragments": {"type": "array", "items": {"type": "string"}},
         "runtimes": {
             "type": "array",
-            "items": {"type": "string"},
-            "description": "Declared supported runtimes (e.g. claude_code, codex).",
+            "items": RUNTIME_ID_SCHEMA,
+            "description": "Declared runtime IDs. Official support is discovered separately.",
         },
         "sha256": {
             "type": "string",
@@ -81,15 +86,11 @@ def validate_manifest(path: str | Path) -> list[str]:
             errors.append(f"`{field_name}` must be a list")
 
     if "runtimes" in raw and isinstance(raw["runtimes"], list):
-        known = {"claude_code", "codex", "hermes", "openclaw"}
         for r in raw["runtimes"]:
             if not isinstance(r, str):
                 errors.append(f"`runtimes` entry must be string, got {type(r).__name__}")
-            elif r.replace("-", "_") not in known:
-                errors.append(
-                    f"unknown runtime '{r}' — supported: {sorted(known)} "
-                    f"(use underscore form, e.g. 'claude_code')"
-                )
+            elif not is_valid_runtime_id(r):
+                errors.append(f"invalid runtime id {r!r} — expected a path-safe slug")
 
     # sha256 — must be a 64-char lowercase hex string if present
     sha256_val = raw.get("sha256")

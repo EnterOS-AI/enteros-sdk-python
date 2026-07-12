@@ -138,9 +138,9 @@ def _native_identity_file_by_runtime() -> "dict[str, str]":
     """Map ``adapter.name()`` (hyphenated runtime id) -> the BASENAME of that
     runtime's ``native_identity_file`` from the official-runtimes registry.
 
-    Only the OFFICIAL ``runtimes`` block is authoritative here (``not_yet_official``
-    runtimes have unpinned/unverified persona conventions, so we do not bind their
-    filename). The registry value may be a ``~/``-prefixed absolute-ish path
+    Only the OFFICIAL ``runtimes`` block is authoritative here; third-party
+    adapters are not part of first-party discovery. The registry value may be a
+    ``~/``-prefixed absolute-ish path
     (hermes: ``~/.hermes/SOUL.md``) or a bare filename (``system-prompt.md``,
     ``AGENTS.md``, ``SOUL.md``) — we compare on ``basename`` so both shapes bind
     to the file the runtime actually reads its identity from. Returns ``{}`` if

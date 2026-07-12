@@ -41,7 +41,8 @@ from typing import Any
 import yaml
 
 from .channel import validate_channel_config
-from .workspace import SUPPORTED_RUNTIMES, ValidationError
+from ._runtime_ids import is_valid_runtime_id
+from .workspace import ValidationError
 
 
 # Workspace-access values — mirrors the CHECK constraint in
@@ -50,9 +51,9 @@ _WORKSPACE_ACCESS_VALUES = frozenset({"none", "read_only", "read_write"})
 
 
 def _runtime_allowed(node: dict[str, Any], runtime: Any) -> bool:
-    if runtime in SUPPORTED_RUNTIMES:
-        return True
-    return node.get("external") is True and runtime == "external"
+    if not is_valid_runtime_id(runtime):
+        return False
+    return runtime != "external" or node.get("external") is True
 
 
 def _validate_workspace_node(
@@ -77,13 +78,13 @@ def _validate_workspace_node(
         )
 
     # Runtime (optional — inherited from defaults)
-    runtime = node.get("runtime")
-    if runtime and not _runtime_allowed(node, runtime):
+    if "runtime" in node and not _runtime_allowed(node, node["runtime"]):
+        runtime = node["runtime"]
         errors.append(
             ValidationError(
                 file_ref,
-                f"{path}: runtime={runtime!r} — must be one of {sorted(SUPPORTED_RUNTIMES)}"
-                " or 'external' when external=true",
+                f"{path}: runtime={runtime!r} — invalid runtime id, or 'external' "
+                "requires external=true",
             )
         )
 
@@ -196,6 +197,16 @@ def validate_org_template(path: Path) -> list[ValidationError]:
     defaults = org.get("defaults")
     if defaults is not None and not isinstance(defaults, dict):
         errors.append(ValidationError(str(org_yaml), "defaults must be an object"))
+    elif isinstance(defaults, dict):
+        if "runtime" in defaults and not _runtime_allowed(defaults, defaults["runtime"]):
+            default_runtime = defaults["runtime"]
+            errors.append(
+                ValidationError(
+                    str(org_yaml),
+                    f"defaults.runtime={default_runtime!r} — invalid runtime id, or "
+                    "'external' requires external=true",
+                )
+            )
 
     workspaces = org.get("workspaces")
     if not workspaces:
